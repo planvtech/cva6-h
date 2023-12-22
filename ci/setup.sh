@@ -24,3 +24,4 @@ source verif/regress/install-spike.sh
 if [ -d ${SPIKE_SRC_DIR}/build/ ]; then
     make -C ${SPIKE_SRC_DIR}/build clean
 fi
+ci/build-hyp-riscv-tests.sh
