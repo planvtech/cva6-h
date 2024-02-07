@@ -42,7 +42,7 @@ module cva6
       logic [riscv::XLEN-1:0] cause;  // cause of exception
       logic [riscv::XLEN-1:0] tval;  // additional information of causing exception (e.g.: instruction causing it),
       // address of LD/ST fault
-      logic [riscv::XLEN-1:0] tval2;  // additional information when the causing exception in a guest exception
+      logic [riscv::GPLEN-1:0] tval2;  // additional information when the causing exception in a guest exception
       logic [riscv::XLEN-1:0] tinst;  // transformed instruction information
       logic gva;  // signals when a guest virtual address is written to tval
       logic valid;

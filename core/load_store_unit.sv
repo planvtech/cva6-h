@@ -585,7 +585,7 @@ module load_store_unit
   // can augment the exception if other memory related exceptions like a page fault or access errors
   always_comb begin : data_misaligned_detection
     misaligned_exception = {
-      {riscv::XLEN{1'b0}}, {riscv::XLEN{1'b0}}, {riscv::XLEN{1'b0}}, {riscv::XLEN{1'b0}}, 1'b0, 1'b0
+      {riscv::XLEN{1'b0}}, {riscv::XLEN{1'b0}}, {riscv::GPLEN{1'b0}}, {riscv::XLEN{1'b0}}, 1'b0, 1'b0
     };
     data_misaligned = 1'b0;
 
@@ -631,7 +631,7 @@ module load_store_unit
           misaligned_exception.tval = {{riscv::XLEN - riscv::VLEN{1'b0}}, lsu_ctrl.vaddr};
         misaligned_exception.tval2 = '0;
         misaligned_exception.tinst = lsu_ctrl.tinst;
-        misaligned_exception.v = ld_st_v_i;
+        misaligned_exception.gva = ld_st_v_i;
 
       end else if (lsu_ctrl.fu == STORE) begin
         misaligned_exception.cause = riscv::ST_ADDR_MISALIGNED;
@@ -640,7 +640,7 @@ module load_store_unit
           misaligned_exception.tval = {{riscv::XLEN - riscv::VLEN{1'b0}}, lsu_ctrl.vaddr};
         misaligned_exception.tval2 = '0;
         misaligned_exception.tinst = lsu_ctrl.tinst;
-        misaligned_exception.v = ld_st_v_i;
+        misaligned_exception.gva = ld_st_v_i;
       end
     end
 
@@ -653,7 +653,7 @@ module load_store_unit
           misaligned_exception.tval = {{riscv::XLEN - riscv::VLEN{1'b0}}, lsu_ctrl.vaddr};
         misaligned_exception.tval2 = '0;
         misaligned_exception.tinst = lsu_ctrl.tinst;
-        misaligned_exception.v = ld_st_v_i;
+        misaligned_exception.gva = ld_st_v_i;
 
       end else if (lsu_ctrl.fu == STORE) begin
         misaligned_exception.cause = riscv::ST_ACCESS_FAULT;
@@ -662,7 +662,7 @@ module load_store_unit
           misaligned_exception.tval = {{riscv::XLEN - riscv::VLEN{1'b0}}, lsu_ctrl.vaddr};
         misaligned_exception.tval2 = '0;
         misaligned_exception.tinst = lsu_ctrl.tinst;
-        misaligned_exception.v = ld_st_v_i;
+        misaligned_exception.gva = ld_st_v_i;
       end
     end
 
@@ -675,7 +675,7 @@ module load_store_unit
           misaligned_exception.tval = {{riscv::XLEN - riscv::VLEN{1'b0}}, lsu_ctrl.vaddr};
         misaligned_exception.tval2 = '0;
         misaligned_exception.tinst = lsu_ctrl.tinst;
-        misaligned_exception.v = ld_st_v_i;
+        misaligned_exception.gva = ld_st_v_i;
       end else if (lsu_ctrl.fu == STORE) begin
         misaligned_exception.cause = riscv::STORE_GUEST_PAGE_FAULT;
         misaligned_exception.valid = 1'b1;
@@ -683,7 +683,7 @@ module load_store_unit
           misaligned_exception.tval = {{riscv::XLEN - riscv::VLEN{1'b0}}, lsu_ctrl.vaddr};
         misaligned_exception.tval2 = '0;
         misaligned_exception.tinst = lsu_ctrl.tinst;
-        misaligned_exception.v = ld_st_v_i;
+        misaligned_exception.gva = ld_st_v_i;
       end
     end
   end
