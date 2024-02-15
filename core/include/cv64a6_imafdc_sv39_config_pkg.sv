@@ -24,6 +24,9 @@ package cva6_config_pkg;
   localparam CVA6ConfigAExtEn = 1;
   localparam CVA6ConfigHExtEn = 1;  // always disabled
   localparam CVA6ConfigGTlbEn = 1;
+  localparam CVA6ConfigL2Tlb4KEn = 1;
+  localparam CVA6ConfigL2Tlb2MEn = 1;
+  localparam CVA6ConfigL2TlbEn = CVA6ConfigL2Tlb4KEn || CVA6ConfigL2Tlb2MEn;
   localparam CVA6ConfigBExtEn = 1;
   localparam CVA6ConfigVExtEn = 0;
   localparam CVA6ConfigZiCondExtEn = 1;
@@ -60,6 +63,10 @@ package cva6_config_pkg;
   localparam CVA6ConfigInstrTlbEntries = 16;
   localparam CVA6ConfigDataTlbEntries = 16;
   localparam CVA6ConfigGTlbEntries = 0;
+  localparam CVA6ConfigL2Tlb4kEntries = 128;  // Set number of 4k entries
+  localparam CVA6ConfigL2Tlb4kAssoc = 4;  // Set number of 4k associativity
+  localparam CVA6ConfigL2Tlb2MEntries = 32;  // Set number of 2m entries
+  localparam CVA6ConfigL2Tlb2MAssoc = 4;  // Set number of 2m associativity
 
   localparam CVA6ConfigRASDepth = 2;
   localparam CVA6ConfigBTBEntries = 32;
@@ -116,6 +123,9 @@ package cva6_config_pkg;
       RVS: bit'(1),
       RVU: bit'(1),
       GTlbPresent: bit'(CVA6ConfigGTlbEn),
+      L2TlbPresent: bit'(CVA6ConfigL2TlbEn),
+      L2Tlb4KPresent: bit'(CVA6ConfigL2Tlb4KEn),
+      L2Tlb2MPresent: bit'(CVA6ConfigL2Tlb2MEn),
       HaltAddress: 64'h800,
       ExceptionAddress: 64'h808,
       RASDepth: unsigned'(CVA6ConfigRASDepth),

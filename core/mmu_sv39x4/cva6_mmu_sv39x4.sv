@@ -26,6 +26,10 @@ module cva6_mmu_sv39x4
     parameter int unsigned           INSTR_TLB_ENTRIES = 4,
     parameter int unsigned           DATA_TLB_ENTRIES  = 4,
     parameter int unsigned           GTLB_ENTRIES      = 4,
+    parameter int unsigned           L2_TLB_4K_ENTRIES = 128,
+    parameter int unsigned           L2_TLB_4K_ASSOC   = 4,
+    parameter int unsigned           L2_TLB_2M_ENTRIES = 32,
+    parameter int unsigned           L2_TLB_2M_ASSOC   = 4,
     parameter int unsigned           ASID_WIDTH        = 1,
     parameter int unsigned           VMID_WIDTH        = 1
 ) (
@@ -107,25 +111,35 @@ module cva6_mmu_sv39x4
   logic [riscv::VLEN-1:0] update_vaddr;
   tlb_update_sv39x4_t update_ptw_itlb, update_ptw_dtlb;
 
-  logic                           itlb_lu_access;
-  riscv::pte_t                    itlb_content;
-  logic                           itlb_is_2M;
-  logic                           itlb_is_1G;
+  logic                            itlb_lu_access;
+  riscv::pte_t                     itlb_content;
+  logic                            itlb_is_2M;
+  logic                            itlb_is_1G;
   // data from G-stage translation
-  riscv::pte_t                    itlb_g_content;
-  logic                           itlb_lu_hit;
-  logic        [riscv::GPLEN-1:0] itlb_gpaddr;
-  logic        [  ASID_WIDTH-1:0] itlb_lu_asid;
+  riscv::pte_t                     itlb_g_content;
+  logic                            itlb_lu_hit;
+  logic         [riscv::GPLEN-1:0] itlb_gpaddr;
+  logic         [  ASID_WIDTH-1:0] itlb_lu_asid;
 
-  logic                           dtlb_lu_access;
-  riscv::pte_t                    dtlb_content;
-  logic                           dtlb_is_2M;
-  logic                           dtlb_is_1G;
-  logic        [  ASID_WIDTH-1:0] dtlb_lu_asid;
+  logic                            dtlb_lu_access;
+  riscv::pte_t                     dtlb_content;
+  logic                            dtlb_is_2M;
+  logic                            dtlb_is_1G;
+  logic         [  ASID_WIDTH-1:0] dtlb_lu_asid;
   // data from G-stage translation
-  riscv::pte_t                    dtlb_g_content;
-  logic                           dtlb_lu_hit;
-  logic        [riscv::GPLEN-1:0] dtlb_gpaddr;
+  riscv::pte_t                     dtlb_g_content;
+  logic                            dtlb_lu_hit;
+  logic         [riscv::GPLEN-1:0] dtlb_gpaddr;
+
+  // L2 TLB interface
+  // To PTW
+  logic                            l2_tlb_lu_access;  // L2 TLB access control signal
+  logic                            l2_tlb_hit;  // L2 TLB hits translation
+  logic                            l2_tlb_flushing;  // L2 TLB is flushing
+  l2_tlb_resp_t                    l2_tlb_resp;  // L2 TLB response to PTW request
+  // From PTW
+  l2_tlb_req_t                     l2_tlb_req;  // PTW request to L2 TLB request
+  tlb_update_t                     l2_tlb_update;  // PTW update L2 TLB
 
 
   // Assignments
@@ -203,6 +217,29 @@ module cva6_mmu_sv39x4
       .lu_hit_o  (dtlb_lu_hit)
   );
 
+  cva6_l2_tlb_sv39x4 #(
+      .TLB_ENTRIES_4K(L2_TLB_4K_ENTRIES),
+      .TLB_WAYS_4k   (L2_TLB_4K_ASSOC),
+      .TLB_ENTRIES_2M(L2_TLB_2M_ENTRIES),
+      .TLB_WAYS_2M   (L2_TLB_2M_ASSOC),
+      .ASID_WIDTH    (ASID_WIDTH),
+      .VMID_WIDTH    (VMID_WIDTH)
+  ) i_l2_tlb (
+      .clk_i       (clk_i),
+      .rst_ni      (rst_ni),
+      .flush_i     (flush_tlb_i),
+      .flush_vvma_i(flush_tlb_vvma_i),
+      .flush_gvma_i(flush_tlb_gvma_i),
+
+      .l2_tlb_update_i(l2_tlb_update),
+      .l2_tlb_req_i   (l2_tlb_req),
+      .l2_tlb_resp_o  (l2_tlb_resp),
+
+      .l2_tlb_access_i  (l2_tlb_lu_access),
+      .l2_tlb_hit_o     (l2_tlb_hit),
+      .l2_tlb_flushing_o(l2_tlb_flushing)
+  );
+
   logic flush_gtlb;
   logic flush_vvma_gtlb;
   logic [VMID_WIDTH-1:0]    gtlb_vmid_to_be_flushed;
@@ -234,6 +271,10 @@ module cva6_mmu_sv39x4
       .itlb_update_o (update_ptw_itlb),
       .dtlb_update_o (update_ptw_dtlb),
 
+      .l2_tlb_update_o(l2_tlb_update),
+      .l2_tlb_access_o(l2_tlb_lu_access),
+      .l2_tlb_req_o   (l2_tlb_req),
+
       .itlb_access_i(itlb_lu_access),
       .itlb_hit_i   (itlb_lu_hit),
       .itlb_vaddr_i (icache_areq_i.fetch_vaddr),
@@ -243,16 +284,20 @@ module cva6_mmu_sv39x4
       .dtlb_vaddr_i (lsu_vaddr_i),
       .hlvx_inst_i  (hlvx_inst_i),
 
+      .l2_tlb_hit_i     (l2_tlb_hit),
+      .l2_tlb_flushing_i(l2_tlb_flushing),
+      .l2_tlb_resp_i    (l2_tlb_resp),
+
       .req_port_i  (req_port_i),
       .req_port_o  (req_port_o),
       .pmpcfg_i,
       .pmpaddr_i,
       .bad_gpaddr_o(ptw_bad_gpaddr),
 
-      .flush_gtlb_i           (flush_gtlb),
-      .flush_vvma_gtlb_i      (flush_vvma_gtlb),
-      .vmid_to_be_flushed_i   (gtlb_vmid_to_be_flushed),
-      .gpaddr_to_be_flushed_i (gtlb_gpaddr_to_be_flushed),
+      .flush_gtlb_i          (flush_gtlb),
+      .flush_vvma_gtlb_i     (flush_vvma_gtlb),
+      .vmid_to_be_flushed_i  (gtlb_vmid_to_be_flushed),
+      .gpaddr_to_be_flushed_i(gtlb_gpaddr_to_be_flushed),
       .*
   );
 
@@ -374,7 +419,7 @@ module cva6_mmu_sv39x4
             icache_areq_o.fetch_exception = {
               riscv::INSTR_GUEST_PAGE_FAULT,
               {{riscv::XLEN - riscv::VLEN{1'b0}}, update_vaddr},
-               ptw_bad_gpaddr,
+              ptw_bad_gpaddr,
               (ptw_err_at_g_int_st ? (riscv::IS_XLEN64 ? riscv::READ_64_PSEUDOINSTRUCTION : riscv::READ_32_PSEUDOINSTRUCTION) : {riscv::XLEN{1'b0}}),
               v_i,
               1'b1

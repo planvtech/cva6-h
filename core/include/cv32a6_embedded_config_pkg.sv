@@ -58,6 +58,10 @@ package cva6_config_pkg;
   localparam CVA6ConfigInstrTlbEntries = 2;
   localparam CVA6ConfigDataTlbEntries = 2;
   localparam CVA6ConfigGTlbEntries = 0;
+  localparam CVA6ConfigL2Tlb4kEntries = 128;  // Set number of 4k entries
+  localparam CVA6ConfigL2Tlb4kAssoc = 4;  // Set number of 4k associativity
+  localparam CVA6ConfigL2Tlb2MEntries = 32;  // Set number of 2m entries
+  localparam CVA6ConfigL2Tlb2MAssoc = 4;  // Set number of 2m associativity
 
   localparam CVA6ConfigRASDepth = 2;
   localparam CVA6ConfigBTBEntries = 0;
@@ -114,6 +118,9 @@ package cva6_config_pkg;
       RVS: bit'(0),
       RVU: bit'(0),
       GTlbPresent: bit'(0),
+      L2TlbPresent: bit'(0),
+      L2Tlb4KPresent: bit'(0),
+      L2Tlb2MPresent: bit'(0),
       HaltAddress: 64'h800,
       ExceptionAddress: 64'h808,
       RASDepth: unsigned'(CVA6ConfigRASDepth),

@@ -53,8 +53,10 @@ module cva6_ptw_sv39x4
 
 
     // to TLBs, update logic
-    output tlb_update_sv39x4_t itlb_update_o,
-    output tlb_update_sv39x4_t dtlb_update_o,
+    output tlb_update_sv39x4_t    itlb_update_o,
+    output tlb_update_sv39x4_t    dtlb_update_o,
+    output l2_tlb_update_sv39x4_t l2_tlb_update_o,
+    output logic                  l2_tlb_access_o,  // start L2 lookup
 
     output logic [riscv::VLEN-1:0] update_vaddr_o,
 
@@ -67,28 +69,34 @@ module cva6_ptw_sv39x4
     input logic                   itlb_hit_i,
     input logic [riscv::VLEN-1:0] itlb_vaddr_i,
 
-    input  logic                   dtlb_access_i,
-    input  logic                   dtlb_hit_i,
-    input  logic [riscv::VLEN-1:0] dtlb_vaddr_i,
+    input logic                   dtlb_access_i,
+    input logic                   dtlb_hit_i,
+    input logic [riscv::VLEN-1:0] dtlb_vaddr_i,
+
+    // FROM/TO L2 TLB
+    input  logic                           l2_tlb_hit_i,
+    input  logic                           l2_tlb_flushing_i,
+    output l2_tlb_req_t                    l2_tlb_req_o,
+    input  l2_tlb_resp_t                   l2_tlb_resp_i,
     // from CSR file
-    input  logic [riscv::PPNW-1:0] satp_ppn_i,     // ppn from satp
-    input  logic [riscv::PPNW-1:0] vsatp_ppn_i,    // ppn from satp
-    input  logic [riscv::PPNW-1:0] hgatp_ppn_i,    // ppn from hgatp
-    input  logic                   mxr_i,
-    input  logic                   vmxr_i,
+    input  logic         [riscv::PPNW-1:0] satp_ppn_i,         // ppn from satp
+    input  logic         [riscv::PPNW-1:0] vsatp_ppn_i,        // ppn from satp
+    input  logic         [riscv::PPNW-1:0] hgatp_ppn_i,        // ppn from hgatp
+    input  logic                           mxr_i,
+    input  logic                           vmxr_i,
     // Performance counters
-    output logic                   itlb_miss_o,
-    output logic                   dtlb_miss_o,
+    output logic                           itlb_miss_o,
+    output logic                           dtlb_miss_o,
     // PMP
 
     input riscv::pmpcfg_t [15:0] pmpcfg_i,
     input logic [15:0][riscv::PLEN-3:0] pmpaddr_i,
     output logic [riscv::GPLEN-1:0] bad_gpaddr_o,
 
-    input                           flush_gtlb_i,
-    input                           flush_vvma_gtlb_i,
-    input logic [VMID_WIDTH-1:0]    vmid_to_be_flushed_i,
-    input logic [riscv::GPLEN-1:0]  gpaddr_to_be_flushed_i
+    input                          flush_gtlb_i,
+    input                          flush_vvma_gtlb_i,
+    input logic [  VMID_WIDTH-1:0] vmid_to_be_flushed_i,
+    input logic [riscv::GPLEN-1:0] gpaddr_to_be_flushed_i
 
 );
 
@@ -149,14 +157,21 @@ module cva6_ptw_sv39x4
   logic [riscv::PLEN-1:0] gptw_pptr_q, gptw_pptr_n;
 
   // GTLB output signals
-  riscv::pte_t gtlb_content;
-  logic        gtlb_is_2M;
-  logic        gtlb_is_1G;
+  riscv::pte_t         gtlb_content;
+  logic                gtlb_is_2M;
+  logic                gtlb_is_1G;
   gtlb_update_sv39x4_t gtlb_update;
-  logic gtlb_ptw_hit;
+  logic                gtlb_ptw_hit;
   // GTLB control signals
   // latched gtlb access signal
   logic gtlb_access_n, gtlb_access_q;
+
+  // L2 TLB Interface
+  logic l2_tlb_lu_hit;
+  // latched l2 tlb access signal
+  logic l2_tlb_access_n, l2_tlb_access_q;
+  logic l2_tlb_valid_n, l2_tlb_valid_q;
+  logic l2_tlb_flushing_n, l2_tlb_flushing_q;
 
   // Assignments
   assign update_vaddr_o = vaddr_q;
@@ -175,73 +190,148 @@ module cva6_ptw_sv39x4
   // TLB Update
   // -----------
   always_comb begin : tlb_update
+    // Update L2 TLB
+    if (CVA6Cfg.L2TlbPresent) begin
+      l2_tlb_update_o.vpn  = {{41 - riscv::SVX{1'b0}}, vaddr_q[riscv::SVX-1:12]};
+      l2_tlb_update_o.asid = tlb_update_asid_q;
+      l2_tlb_update_o.vmid = tlb_update_vmid_q;
 
-    itlb_update_o.vpn = {{41 - riscv::SVX{1'b0}}, vaddr_q[riscv::SVX-1:12]};
-    dtlb_update_o.vpn = {{41 - riscv::SVX{1'b0}}, vaddr_q[riscv::SVX-1:12]};
-    // update the correct page table level
-    if (enable_g_translation_i && enable_translation_i) begin
-      itlb_update_o.is_s_2M = (gptw_lvl_q == LVL2);
-      itlb_update_o.is_s_1G = (gptw_lvl_q == LVL1);
-      itlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
-      itlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
-    end else if (enable_translation_i) begin
-      itlb_update_o.is_s_2M = (ptw_lvl_q == LVL2);
-      itlb_update_o.is_s_1G = (ptw_lvl_q == LVL1);
-      itlb_update_o.is_g_2M = 1'b0;
-      itlb_update_o.is_g_1G = 1'b0;
-    end else begin
-      itlb_update_o.is_s_2M = 1'b0;
-      itlb_update_o.is_s_1G = 1'b0;
-      itlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
-      itlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
-    end
+      if((is_instr_ptw_q && enable_g_translation_i && enable_translation_i) || (!is_instr_ptw_q && en_ld_st_g_translation_i && en_ld_st_translation_i)) begin
+        l2_tlb_update_o.is_s_2M = (gptw_lvl_q == LVL2);
+        l2_tlb_update_o.is_s_1G = (gptw_lvl_q == LVL1);
+        l2_tlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
+        l2_tlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
+      end else if((is_instr_ptw_q && enable_translation_i) || (!is_instr_ptw_q && en_ld_st_translation_i)) begin
+        l2_tlb_update_o.is_s_2M = (ptw_lvl_q == LVL2);
+        l2_tlb_update_o.is_s_1G = (ptw_lvl_q == LVL1);
+        l2_tlb_update_o.is_g_2M = 1'b0;
+        l2_tlb_update_o.is_g_1G = 1'b0;
+      end else begin
+        l2_tlb_update_o.is_s_2M = 1'b0;
+        l2_tlb_update_o.is_s_1G = 1'b0;
+        l2_tlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
+        l2_tlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
+      end
+      if ((is_instr_ptw_q && enable_g_translation_i) || (!is_instr_ptw_q && en_ld_st_g_translation_i)) begin
+        l2_tlb_update_o.content   = gpte_q | (global_mapping_q << 5);
+        l2_tlb_update_o.g_content = pte;
+      end else begin
+        l2_tlb_update_o.content   = pte | (global_mapping_q << 5);
+        l2_tlb_update_o.g_content = '0;
+      end
 
-    if (en_ld_st_g_translation_i && en_ld_st_translation_i) begin
-      dtlb_update_o.is_s_2M = (gptw_lvl_q == LVL2);
-      dtlb_update_o.is_s_1G = (gptw_lvl_q == LVL1);
-      dtlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
-      dtlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
-    end else if (en_ld_st_translation_i) begin
-      dtlb_update_o.is_s_2M = (ptw_lvl_q == LVL2);
-      dtlb_update_o.is_s_1G = (ptw_lvl_q == LVL1);
-      dtlb_update_o.is_g_2M = 1'b0;
-      dtlb_update_o.is_g_1G = 1'b0;
+      l2_tlb_update_o.s_st_enbl_i = is_instr_ptw_q ? enable_translation_i : en_ld_st_translation_i;
+      l2_tlb_update_o.g_st_enbl_i  = is_instr_ptw_q ? enable_g_translation_i : en_ld_st_g_translation_i;
+      l2_tlb_update_o.v_i = is_instr_ptw_q ? v_i : ld_st_v_i;
     end else begin
-      dtlb_update_o.is_s_2M = 1'b0;
-      dtlb_update_o.is_s_1G = 1'b0;
-      dtlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
-      dtlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
+      l2_tlb_update_o = '0;
     end
-    // output the correct ASID
-    itlb_update_o.asid = tlb_update_asid_q;
-    dtlb_update_o.asid = tlb_update_asid_q;
-    // output the correct VMID
-    itlb_update_o.vmid = tlb_update_vmid_q;
-    dtlb_update_o.vmid = tlb_update_vmid_q;
-    // set the global mapping bit
-    if (enable_g_translation_i) begin
-      itlb_update_o.content   = gpte_q | (global_mapping_q << 5);
-      itlb_update_o.g_content = pte;
+    // Update ITLB and DTLB
+    if (l2_tlb_lu_hit && CVA6Cfg.L2TlbPresent) begin
+
+      itlb_update_o.asid      = l2_tlb_resp_i.asid;
+      itlb_update_o.vmid      = l2_tlb_resp_i.vmid;
+      itlb_update_o.vpn       = l2_tlb_resp_i.vpn;
+      itlb_update_o.is_s_1G   = l2_tlb_resp_i.is_s_1G;
+      itlb_update_o.is_s_2M   = l2_tlb_resp_i.is_s_2M;
+      itlb_update_o.is_g_1G   = l2_tlb_resp_i.is_g_1G;
+      itlb_update_o.is_g_2M   = l2_tlb_resp_i.is_g_2M;
+      itlb_update_o.content   = l2_tlb_resp_i.content;
+      itlb_update_o.g_content = l2_tlb_resp_i.g_content;
+
+      dtlb_update_o.asid      = l2_tlb_resp_i.asid;
+      dtlb_update_o.vmid      = l2_tlb_resp_i.vmid;
+      dtlb_update_o.vpn       = l2_tlb_resp_i.vpn;
+      dtlb_update_o.is_s_1G   = l2_tlb_resp_i.is_s_1G;
+      dtlb_update_o.is_s_2M   = l2_tlb_resp_i.is_s_2M;
+      dtlb_update_o.is_g_1G   = l2_tlb_resp_i.is_g_1G;
+      dtlb_update_o.is_g_2M   = l2_tlb_resp_i.is_g_2M;
+      dtlb_update_o.content   = l2_tlb_resp_i.content;
+      dtlb_update_o.g_content = l2_tlb_resp_i.g_content;
+
     end else begin
-      itlb_update_o.content   = pte | (global_mapping_q << 5);
-      itlb_update_o.g_content = '0;
-    end
-    if (en_ld_st_g_translation_i) begin
-      dtlb_update_o.content   = gpte_q | (global_mapping_q << 5);
-      dtlb_update_o.g_content = pte;
-    end else begin
-      dtlb_update_o.content   = pte | (global_mapping_q << 5);
-      dtlb_update_o.g_content = '0;
+      itlb_update_o.vpn = {{41 - riscv::SVX{1'b0}}, vaddr_q[riscv::SVX-1:12]};
+      dtlb_update_o.vpn = {{41 - riscv::SVX{1'b0}}, vaddr_q[riscv::SVX-1:12]};
+      // update the correct page table level
+      if (enable_g_translation_i && enable_translation_i) begin
+        itlb_update_o.is_s_2M = (gptw_lvl_q == LVL2);
+        itlb_update_o.is_s_1G = (gptw_lvl_q == LVL1);
+        itlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
+        itlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
+      end else if (enable_translation_i) begin
+        itlb_update_o.is_s_2M = (ptw_lvl_q == LVL2);
+        itlb_update_o.is_s_1G = (ptw_lvl_q == LVL1);
+        itlb_update_o.is_g_2M = 1'b0;
+        itlb_update_o.is_g_1G = 1'b0;
+      end else begin
+        itlb_update_o.is_s_2M = 1'b0;
+        itlb_update_o.is_s_1G = 1'b0;
+        itlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
+        itlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
+      end
+
+      if (en_ld_st_g_translation_i && en_ld_st_translation_i) begin
+        dtlb_update_o.is_s_2M = (gptw_lvl_q == LVL2);
+        dtlb_update_o.is_s_1G = (gptw_lvl_q == LVL1);
+        dtlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
+        dtlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
+      end else if (en_ld_st_translation_i) begin
+        dtlb_update_o.is_s_2M = (ptw_lvl_q == LVL2);
+        dtlb_update_o.is_s_1G = (ptw_lvl_q == LVL1);
+        dtlb_update_o.is_g_2M = 1'b0;
+        dtlb_update_o.is_g_1G = 1'b0;
+      end else begin
+        dtlb_update_o.is_s_2M = 1'b0;
+        dtlb_update_o.is_s_1G = 1'b0;
+        dtlb_update_o.is_g_2M = (ptw_lvl_q == LVL2);
+        dtlb_update_o.is_g_1G = (ptw_lvl_q == LVL1);
+      end
+      // output the correct ASID
+      itlb_update_o.asid = tlb_update_asid_q;
+      dtlb_update_o.asid = tlb_update_asid_q;
+      // output the correct VMID
+      itlb_update_o.vmid = tlb_update_vmid_q;
+      dtlb_update_o.vmid = tlb_update_vmid_q;
+      // set the global mapping bit
+      if (enable_g_translation_i) begin
+        itlb_update_o.content   = gpte_q | (global_mapping_q << 5);
+        itlb_update_o.g_content = pte;
+      end else begin
+        itlb_update_o.content   = pte | (global_mapping_q << 5);
+        itlb_update_o.g_content = '0;
+      end
+      if (en_ld_st_g_translation_i) begin
+        dtlb_update_o.content   = gpte_q | (global_mapping_q << 5);
+        dtlb_update_o.g_content = pte;
+      end else begin
+        dtlb_update_o.content   = pte | (global_mapping_q << 5);
+        dtlb_update_o.g_content = '0;
+      end
     end
   end
 
+  assign l2_tlb_lu_hit = CVA6Cfg.L2TlbPresent ? l2_tlb_hit_i & l2_tlb_access_q : 1'b0;
+  assign l2_tlb_access_o = CVA6Cfg.L2TlbPresent ? l2_tlb_access_q : 1'b0;
+
+  // ---------------
+  // L2 TLB request
+  // ---------------
+  assign l2_tlb_req_o.vaddr = CVA6Cfg.L2TlbPresent ? (vaddr_q) : '0;
+  assign l2_tlb_req_o.asid = CVA6Cfg.L2TlbPresent ? (tlb_update_asid_q) : '0;
+  assign l2_tlb_req_o.vmid = CVA6Cfg.L2TlbPresent ? (tlb_update_vmid_q) : '0;
+  assign l2_tlb_req_o.s_st_enbl_i  = CVA6Cfg.L2TlbPresent ? (is_instr_ptw_q ? enable_translation_i : en_ld_st_translation_i) : 1'b0;
+  assign l2_tlb_req_o.g_st_enbl_i  = CVA6Cfg.L2TlbPresent ? (is_instr_ptw_q ? enable_g_translation_i : en_ld_st_g_translation_i) : 1'b0;
+  assign l2_tlb_req_o.v_i = CVA6Cfg.L2TlbPresent ? (is_instr_ptw_q ? v_i : ld_st_v_i) : 1'b0;
+  assign l2_tlb_req_o.valid = CVA6Cfg.L2TlbPresent ? (l2_tlb_valid_q) : 1'b0;
+  assign l2_tlb_flushing_n         = CVA6Cfg.L2TlbPresent ? (l2_tlb_valid_q ? l2_tlb_flushing_i :
+                                                      l2_tlb_flushing_q) : 1'b0;
   // -----------
   // GTLB Update
   // -----------
-  assign gtlb_update.gppn     =  {{41-riscv::SVX{1'b0}}, gptw_pptr_q[riscv::SVX-1:12]};
-  assign gtlb_update.is_2M    = (ptw_lvl_q == LVL2);
-  assign gtlb_update.is_1G    = (ptw_lvl_q == LVL1);
-  assign gtlb_update.content  = pte;
+  assign gtlb_update.gppn = {{41 - riscv::SVX{1'b0}}, gptw_pptr_q[riscv::SVX-1:12]};
+  assign gtlb_update.is_2M = (ptw_lvl_q == LVL2);
+  assign gtlb_update.is_1G = (ptw_lvl_q == LVL1);
+  assign gtlb_update.content = pte;
 
   assign req_port_o.tag_valid = tag_valid_q;
 
@@ -267,30 +357,30 @@ module cva6_ptw_sv39x4
   );
 
   if (CVA6Cfg.GTlbPresent) begin : gen_gtlb
-  // -----------
-  // G-stage TLB
-  // Description: Holds intermediate nested translations GPA -> HPA
-  // ,thus accelerates VS-Stage translation.
-   cva6_gtlb_sv39x4 #(
-     .GTLB_ENTRIES           ( GTLB_ENTRIES                ),
-     .VMID_WIDTH             ( VMID_WIDTH                  )
+    // -----------
+    // G-stage TLB
+    // Description: Holds intermediate nested translations GPA -> HPA
+    // ,thus accelerates VS-Stage translation.
+    cva6_gtlb_sv39x4 #(
+        .GTLB_ENTRIES(GTLB_ENTRIES),
+        .VMID_WIDTH  (VMID_WIDTH)
     ) i_gtlb (
-     .clk_i                  ( clk_i                       ),
-     .rst_ni                 ( rst_ni                      ),
-     .flush_i                ( flush_gtlb_i                ),
-     .flush_vvma_i           ( flush_vvma_gtlb_i           ),
-     .update_i               ( gtlb_update                 ),
+        .clk_i       (clk_i),
+        .rst_ni      (rst_ni),
+        .flush_i     (flush_gtlb_i),
+        .flush_vvma_i(flush_vvma_gtlb_i),
+        .update_i    (gtlb_update),
 
-     .lu_access_i            ( gtlb_access_q               ),
-     .lu_vmid_i              ( tlb_update_vmid_q           ),
-     .lu_gpaddr_i            ( gptw_pptr_q                 ),
-     .vmid_to_be_flushed_i   ( vmid_to_be_flushed_i        ),
-     .gpaddr_to_be_flushed_i ( gpaddr_to_be_flushed_i      ),
-     .lu_content_o           ( gtlb_content                ),
+        .lu_access_i           (gtlb_access_q),
+        .lu_vmid_i             (tlb_update_vmid_q),
+        .lu_gpaddr_i           (gptw_pptr_q),
+        .vmid_to_be_flushed_i  (vmid_to_be_flushed_i),
+        .gpaddr_to_be_flushed_i(gpaddr_to_be_flushed_i),
+        .lu_content_o          (gtlb_content),
 
-     .lu_is_2M_o             ( gtlb_is_2M                  ),
-     .lu_is_1G_o             ( gtlb_is_1G                  ),
-     .lu_hit_o               ( gtlb_ptw_hit                )
+        .lu_is_2M_o(gtlb_is_2M),
+        .lu_is_1G_o(gtlb_is_1G),
+        .lu_hit_o  (gtlb_ptw_hit)
     );
   end else begin
     assign gtlb_content = '0;
@@ -349,6 +439,8 @@ module cva6_ptw_sv39x4
     gpte_d                 = gpte_q;
     global_mapping_n       = global_mapping_q;
     gtlb_access_n          = gtlb_access_q;
+    l2_tlb_access_n        = l2_tlb_access_q;
+    l2_tlb_valid_n         = 1'b0;
     // input registers
     tlb_update_asid_n      = tlb_update_asid_q;
     tlb_update_vmid_n      = tlb_update_vmid_q;
@@ -372,14 +464,22 @@ module cva6_ptw_sv39x4
         gpaddr_n         = '0;
         gpte_d           = '0;
         if (CVA6Cfg.GTlbPresent) begin
-          gtlb_access_n    = 1'b0;
+          gtlb_access_n = 1'b0;
+        end
+        if (CVA6Cfg.L2TlbPresent) begin
+          l2_tlb_access_n = 1'b0;
+          l2_tlb_valid_n  = 1'b0;
         end
         // if we got an ITLB miss
         if ((enable_translation_i | enable_g_translation_i) & itlb_access_i & ~itlb_hit_i & ~dtlb_access_i) begin
           if (enable_translation_i && enable_g_translation_i) begin
             ptw_stage_d = G_INTERMED_STAGE;
             if (CVA6Cfg.GTlbPresent) begin
-              gtlb_access_n    = 1'b1;
+              gtlb_access_n = 1'b1;
+            end
+            if (CVA6Cfg.L2TlbPresent) begin
+              l2_tlb_access_n = 1'b1;
+              l2_tlb_valid_n  = 1'b1;
             end
             pptr = {vsatp_ppn_i, itlb_vaddr_i[riscv::SV-1:30], 3'b0};
             gptw_pptr_n = pptr;
@@ -393,18 +493,22 @@ module cva6_ptw_sv39x4
             if (v_i) ptw_pptr_n = {vsatp_ppn_i, itlb_vaddr_i[riscv::SV-1:30], 3'b0};
             else ptw_pptr_n = {satp_ppn_i, itlb_vaddr_i[riscv::SV-1:30], 3'b0};
           end
-          is_instr_ptw_n    = 1'b1;
+          is_instr_ptw_n = 1'b1;
           tlb_update_asid_n = v_i ? vs_asid_i : asid_i;
           tlb_update_vmid_n = vmid_i;
-          vaddr_n           = itlb_vaddr_i;
+          vaddr_n = itlb_vaddr_i;
           state_d             = (enable_translation_i && enable_g_translation_i && CVA6Cfg.GTlbPresent) ? WAIT_GTLB_HIT : WAIT_GRANT;
-          itlb_miss_o       = 1'b1;
+          itlb_miss_o = 1'b1;
           // we got an DTLB miss
         end else if ((en_ld_st_translation_i || en_ld_st_g_translation_i) & dtlb_access_i & ~dtlb_hit_i) begin
           if (en_ld_st_translation_i && en_ld_st_g_translation_i) begin
             ptw_stage_d = G_INTERMED_STAGE;
             if (CVA6Cfg.GTlbPresent) begin
-              gtlb_access_n    = 1'b1;
+              gtlb_access_n = 1'b1;
+            end
+            if (CVA6Cfg.L2TlbPresent) begin
+              l2_tlb_access_n = 1'b1;
+              l2_tlb_valid_n  = 1'b1;
             end
             pptr = {vsatp_ppn_i, dtlb_vaddr_i[riscv::SV-1:30], 3'b0};
             gptw_pptr_n = pptr;
@@ -420,24 +524,22 @@ module cva6_ptw_sv39x4
           end
           tlb_update_asid_n = ld_st_v_i ? vs_asid_i : asid_i;
           tlb_update_vmid_n = vmid_i;
-          vaddr_n           = dtlb_vaddr_i;
+          vaddr_n = dtlb_vaddr_i;
           state_d           = (enable_translation_i && enable_g_translation_i && CVA6Cfg.GTlbPresent) ? WAIT_GTLB_HIT : WAIT_GRANT;
-          dtlb_miss_o       = 1'b1;
+          dtlb_miss_o = 1'b1;
         end
       end
       WAIT_GTLB_HIT: begin
         if (gtlb_ptw_hit) begin
           pptr = {gtlb_content.ppn[riscv::GPPNW-1:0], gptw_pptr_q[11:0]};
-          if (gtlb_is_2M)
-            pptr[20:0] = gptw_pptr_q[20:0];
-          if(gtlb_is_1G)
-            pptr[29:0] = gptw_pptr_q[29:0];
-          ptw_pptr_n = pptr;
-          ptw_lvl_n = gptw_lvl_q;
+          if (gtlb_is_2M) pptr[20:0] = gptw_pptr_q[20:0];
+          if (gtlb_is_1G) pptr[29:0] = gptw_pptr_q[29:0];
+          ptw_pptr_n  = pptr;
+          ptw_lvl_n   = gptw_lvl_q;
           ptw_stage_d = S_STAGE;
         end
         if (CVA6Cfg.GTlbPresent) begin
-          gtlb_access_n    = 1'b1;
+          gtlb_access_n = 1'b1;
         end
         state_d = WAIT_GRANT;
       end
@@ -511,9 +613,13 @@ module cva6_ptw_sv39x4
                 if (!pte.x || !pte.a) begin
                   state_d = PROPAGATE_ERROR;
                   ptw_stage_d = ptw_stage_q;
-                end else if ((ptw_stage_q == G_FINAL_STAGE) || !enable_g_translation_i)
+                end else if ((ptw_stage_q == G_FINAL_STAGE) || !enable_g_translation_i) begin
+                  if ((ptw_lvl_q == LVL1 && gptw_lvl_q == LVL1) || l2_tlb_flushing_q)
+                    l2_tlb_update_o.valid = 1'b0;
+                  else l2_tlb_update_o.valid = 1'b1;
+                  l2_tlb_access_n = 1'b0;
                   itlb_update_o.valid = 1'b1;
-
+                end
               end else begin
                 // ------------
                 // Update DTLB
@@ -524,8 +630,13 @@ module cva6_ptw_sv39x4
                 // we can directly raise an error. This doesn't put a useless
                 // entry into the TLB.
                 if (pte.a && ((pte.r && !hlvx_inst_i) || (pte.x && (mxr_i || hlvx_inst_i || (ptw_stage_q == S_STAGE && vmxr_i && ld_st_v_i))))) begin
-                  if ((ptw_stage_q == G_FINAL_STAGE) || !en_ld_st_g_translation_i)
+                  if ((ptw_stage_q == G_FINAL_STAGE) || !en_ld_st_g_translation_i) begin
                     dtlb_update_o.valid = 1'b1;
+                    if ((ptw_lvl_q == LVL1 && gptw_lvl_q == LVL1) || l2_tlb_flushing_q)
+                      l2_tlb_update_o.valid = 1'b0;
+                    else l2_tlb_update_o.valid = 1'b1;
+                    l2_tlb_access_n = 1'b0;
+                  end
                 end else begin
                   state_d = PROPAGATE_ERROR;
                   ptw_stage_d = ptw_stage_q;
@@ -535,6 +646,8 @@ module cva6_ptw_sv39x4
                 // the same applies if the dirty flag is not set
                 if (lsu_is_store_i && (!pte.w || !pte.d)) begin
                   dtlb_update_o.valid = 1'b0;
+                  l2_tlb_update_o.valid = 1'b0;
+                  l2_tlb_access_n = 1'b0;
                   state_d = PROPAGATE_ERROR;
                   ptw_stage_d = ptw_stage_q;
                 end
@@ -543,15 +656,19 @@ module cva6_ptw_sv39x4
               // 6. If i > 0 and pa.ppn[i − 1 : 0] != 0, this is a misaligned superpage; stop and raise a page-fault
               // exception.
               if (ptw_lvl_q == LVL1 && pte.ppn[17:0] != '0) begin
-                state_d             = PROPAGATE_ERROR;
-                ptw_stage_d         = ptw_stage_q;
-                dtlb_update_o.valid = 1'b0;
-                itlb_update_o.valid = 1'b0;
+                state_d               = PROPAGATE_ERROR;
+                ptw_stage_d           = ptw_stage_q;
+                dtlb_update_o.valid   = 1'b0;
+                itlb_update_o.valid   = 1'b0;
+                l2_tlb_update_o.valid = 1'b0;
+                l2_tlb_access_n       = 1'b0;
               end else if (ptw_lvl_q == LVL2 && pte.ppn[8:0] != '0) begin
-                state_d             = PROPAGATE_ERROR;
-                ptw_stage_d         = ptw_stage_q;
-                dtlb_update_o.valid = 1'b0;
-                itlb_update_o.valid = 1'b0;
+                state_d               = PROPAGATE_ERROR;
+                ptw_stage_d           = ptw_stage_q;
+                dtlb_update_o.valid   = 1'b0;
+                itlb_update_o.valid   = 1'b0;
+                l2_tlb_update_o.valid = 1'b0;
+                l2_tlb_access_n       = 1'b0;
               end
               // check if 63:41 are all zeros
               if (((v_i && is_instr_ptw_q) || (ld_st_v_i && !is_instr_ptw_q)) && ptw_stage_q == S_STAGE && !((|pte.ppn[riscv::PPNW-1:riscv::GPPNW]) == 1'b0)) begin
@@ -569,7 +686,7 @@ module cva6_ptw_sv39x4
                     if ((is_instr_ptw_q && enable_g_translation_i) || (!is_instr_ptw_q && en_ld_st_g_translation_i)) begin
                       ptw_stage_d = G_INTERMED_STAGE;
                       if (CVA6Cfg.GTlbPresent) begin
-                        gtlb_access_n    = 1'b1;
+                        gtlb_access_n = 1'b1;
                       end
                       gpte_d = pte;
                       gptw_lvl_n = LVL2;
@@ -598,7 +715,7 @@ module cva6_ptw_sv39x4
                     if ((is_instr_ptw_q && enable_g_translation_i) || (!is_instr_ptw_q && en_ld_st_g_translation_i)) begin
                       ptw_stage_d = G_INTERMED_STAGE;
                       if (CVA6Cfg.GTlbPresent) begin
-                        gtlb_access_n    = 1'b1;
+                        gtlb_access_n = 1'b1;
                       end
                       gpte_d = pte;
                       gptw_lvl_n = LVL3;
@@ -644,6 +761,8 @@ module cva6_ptw_sv39x4
           if (!allow_access) begin
             itlb_update_o.valid = 1'b0;
             dtlb_update_o.valid = 1'b0;
+            l2_tlb_update_o.valid = 1'b0;
+            l2_tlb_access_n = 1'b0;
             // we have to return the failed address in bad_addr
             ptw_pptr_n = ptw_pptr_q;
             ptw_stage_d = ptw_stage_q;
@@ -665,6 +784,7 @@ module cva6_ptw_sv39x4
       end
       // wait for the rvalid before going back to IDLE
       WAIT_RVALID: begin
+        l2_tlb_update_o.valid = 1'b0;
         if (data_rvalid_q) state_d = IDLE;
       end
       default: begin
@@ -681,6 +801,15 @@ module cva6_ptw_sv39x4
       // 1. in the PTE Lookup check whether we still need to wait for an rvalid
       // 2. waiting for a grant, if so: wait for it
       // if not, go back to idle
+      l2_tlb_update_o.valid = 1'b0;
+      if ((state_q == PTE_LOOKUP && !data_rvalid_q) || ((state_q == WAIT_GRANT) && req_port_i.data_gnt))
+        state_d = WAIT_RVALID;
+      else state_d = IDLE;
+    end else if (l2_tlb_lu_hit && state_q != WAIT_RVALID) begin
+      l2_tlb_update_o.valid = 1'b0;
+      l2_tlb_access_n = 1'b0;
+      if (is_instr_ptw_q) itlb_update_o.valid = 1'b1;
+      else dtlb_update_o.valid = 1'b1;
       if ((state_q == PTE_LOOKUP && !data_rvalid_q) || ((state_q == WAIT_GRANT) && req_port_i.data_gnt))
         state_d = WAIT_RVALID;
       else state_d = IDLE;
@@ -709,6 +838,11 @@ module cva6_ptw_sv39x4
       if (CVA6Cfg.GTlbPresent) begin
         gtlb_access_q <= 1'b0;
       end
+      if (CVA6Cfg.L2TlbPresent) begin
+        l2_tlb_access_q   <= 1'b0;
+        l2_tlb_valid_q    <= 1'b0;
+        l2_tlb_flushing_q <= 1'b0;
+      end
     end else begin
       state_q           <= state_d;
       ptw_stage_q       <= ptw_stage_d;
@@ -728,6 +862,11 @@ module cva6_ptw_sv39x4
       data_rvalid_q     <= req_port_i.data_rvalid;
       if (CVA6Cfg.GTlbPresent) begin
         gtlb_access_q <= gtlb_access_n;
+      end
+      if (CVA6Cfg.L2TlbPresent) begin
+        l2_tlb_access_q   <= l2_tlb_access_n;
+        l2_tlb_valid_q    <= l2_tlb_valid_n;
+        l2_tlb_flushing_q <= l2_tlb_flushing_n;
       end
     end
   end

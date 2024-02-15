@@ -751,6 +751,13 @@ package ariane_pkg;
   localparam int unsigned INSTR_TLB_ENTRIES = cva6_config_pkg::CVA6ConfigInstrTlbEntries;
   localparam int unsigned DATA_TLB_ENTRIES = cva6_config_pkg::CVA6ConfigDataTlbEntries;
   localparam int unsigned GTLB_ENTRIES = cva6_config_pkg::CVA6ConfigGTlbEntries;
+  // ---------------
+  // L2 TLB instanciation
+  // ---------------
+  localparam int unsigned  L2_TLB_4K_ENTRIES = cva6_config_pkg::CVA6ConfigL2Tlb4kEntries;   // Set number of 4k entries
+  localparam int unsigned  L2_TLB_4K_ASSOC   = cva6_config_pkg::CVA6ConfigL2Tlb4kAssoc;     // Set number of 4k associativity
+  localparam int unsigned  L2_TLB_2M_ENTRIES = cva6_config_pkg::CVA6ConfigL2Tlb2MEntries;    // Set number of 2m entries
+  localparam int unsigned  L2_TLB_2M_ASSOC   = cva6_config_pkg::CVA6ConfigL2Tlb2MAssoc;     // Set number of 2m associativity
 
   // -------------------
   // Performance counter
@@ -801,13 +808,52 @@ package ariane_pkg;
   } tlb_update_sv39x4_t;
 
   typedef struct packed {
-    logic                  valid;      // valid flag
-    logic                  is_2M;      //
-    logic                  is_1G;      //
+    logic                  valid;        // valid flag
+    logic                  is_s_2M;
+    logic                  is_s_1G;
+    logic                  is_g_2M;
+    logic                  is_g_1G;
+    logic [28:0]           vpn;
+    logic [ASID_WIDTH-1:0] asid;
+    logic [VMID_WIDTH-1:0] vmid;
+    riscv::pte_t           content;
+    riscv::pte_t           g_content;
+    logic                  s_st_enbl_i;  // s-stage enabled
+    logic                  g_st_enbl_i;  // g-stage enabled
+    logic                  v_i;          // virtualization mode
+  } l2_tlb_update_sv39x4_t;
+
+  typedef struct packed {
+    logic                  valid;    // valid flag
+    logic                  is_2M;    //
+    logic                  is_1G;    //
     logic [28:0]           gppn;
     logic [VMID_WIDTH-1:0] vmid;
     riscv::pte_t           content;
   } gtlb_update_sv39x4_t;
+
+  typedef struct packed {
+    logic                  valid;      // valid flag
+    logic                  is_s_2M;
+    logic                  is_s_1G;
+    logic                  is_g_2M;
+    logic                  is_g_1G;
+    logic [28:0]           vpn;
+    logic [ASID_WIDTH-1:0] asid;
+    logic [VMID_WIDTH-1:0] vmid;
+    riscv::pte_t           content;
+    riscv::pte_t           g_content;
+  } l2_tlb_resp_t;
+
+  typedef struct packed {
+    logic                   valid;        // valid flag
+    logic [riscv::VLEN-1:0] vaddr;
+    logic [ASID_WIDTH-1:0]  asid;
+    logic [VMID_WIDTH-1:0]  vmid;
+    logic                   s_st_enbl_i;  // s-stage enabled
+    logic                   g_st_enbl_i;  // g-stage enabled
+    logic                   v_i;          // virtualization mode
+  } l2_tlb_req_t;
 
   // Bits required for representation of physical address space as 4K pages
   // (e.g. 27*4K == 39bit address space).
@@ -1065,14 +1111,15 @@ package ariane_pkg;
   // ----------------------
 
   // checks if final translation page size is 1G when H-extension is enabled
-  function automatic logic is_trans_1G(input logic s_st_enbl, input logic g_st_enbl, input logic is_s_1G,
-                             input logic is_g_1G);
+  function automatic logic is_trans_1G(input logic s_st_enbl, input logic g_st_enbl,
+                                       input logic is_s_1G, input logic is_g_1G);
     return (((is_s_1G && s_st_enbl) || !s_st_enbl) && ((is_g_1G && g_st_enbl) || !g_st_enbl));
   endfunction : is_trans_1G
 
   // checks if final translation page size is 2M when H-extension is enabled
-  function automatic logic is_trans_2M(input logic s_st_enbl, input logic g_st_enbl, input logic is_s_1G,
-                             input logic is_s_2M, input logic is_g_1G, input logic is_g_2M);
+  function automatic logic is_trans_2M(input logic s_st_enbl, input logic g_st_enbl,
+                                       input logic is_s_1G, input logic is_s_2M,
+                                       input logic is_g_1G, input logic is_g_2M);
     return  (s_st_enbl && g_st_enbl) ? 
                 ((is_s_2M && (is_g_1G || is_g_2M)) || (is_g_2M && (is_s_1G || is_s_2M))) :
                 ((is_s_2M && s_st_enbl) || (is_g_2M && g_st_enbl));
@@ -1097,8 +1144,8 @@ package ariane_pkg;
 
   // computes the final gppn based on the guest physical address
   function automatic logic [(riscv::GPPNW-1):0] make_gppn(input logic s_st_enbl, input logic is_1G,
-                                                input logic is_2M, input logic [28:0] vpn,
-                                                input riscv::pte_t pte);
+                                                          input logic is_2M, input logic [28:0] vpn,
+                                                          input riscv::pte_t pte);
     logic [(riscv::GPPNW-1):0] gppn;
     if (s_st_enbl) begin
       gppn = pte.ppn[(riscv::GPPNW-1):0];

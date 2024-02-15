@@ -76,6 +76,9 @@ package config_pkg;
     bit                          RVS;                    //Supervisor mode
     bit                          RVU;                    //User mode
     bit                          GTlbPresent;
+    bit                          L2TlbPresent;
+    bit                          L2Tlb4KPresent;
+    bit                          L2Tlb2MPresent;
     // Debug Module
     // address to which a hart should jump when it was requested to halt
     logic [63:0]                 HaltAddress;

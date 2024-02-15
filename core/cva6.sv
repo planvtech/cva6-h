@@ -207,6 +207,9 @@ module cva6
     CVA6Cfg.RVS,
     CVA6Cfg.RVU,
     CVA6Cfg.GTlbPresent,
+    CVA6Cfg.L2TlbPresent,
+    CVA6Cfg.L2Tlb4KPresent,
+    CVA6Cfg.L2Tlb2MPresent,
     CVA6Cfg.HaltAddress,
     CVA6Cfg.ExceptionAddress,
     CVA6Cfg.RASDepth,
@@ -815,8 +818,8 @@ module cva6
       .pmpcfg_i                (pmpcfg),
       .pmpaddr_i               (pmpaddr),
       //RVFI
-      .rvfi_lsu_ctrl_o        (rvfi_lsu_ctrl),
-      .rvfi_mem_paddr_o       (rvfi_mem_paddr)
+      .rvfi_lsu_ctrl_o         (rvfi_lsu_ctrl),
+      .rvfi_mem_paddr_o        (rvfi_mem_paddr)
   );
 
   // ---------
@@ -870,8 +873,8 @@ module cva6
   // ---------
   csr_regfile #(
       .CVA6Cfg       (CVA6ExtendCfg),
-      .AsidWidth    (ASID_WIDTH),
-      .VmidWidth    (VMID_WIDTH),
+      .AsidWidth     (ASID_WIDTH),
+      .VmidWidth     (VMID_WIDTH),
       .MHPMCounterNum(MHPMCounterNum)
   ) csr_regfile_i (
       .flush_o                 (flush_csr_ctrl),
