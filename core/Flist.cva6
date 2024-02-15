@@ -191,6 +191,7 @@ ${CVA6_REPO_DIR}/core/mmu_sv39/tlb.sv
 ${CVA6_REPO_DIR}/core/mmu_sv39x4/cva6_mmu_sv39x4.sv
 ${CVA6_REPO_DIR}/core/mmu_sv39x4/cva6_ptw_sv39x4.sv
 ${CVA6_REPO_DIR}/core/mmu_sv39x4/cva6_tlb_sv39x4.sv
+${CVA6_REPO_DIR}/core/mmu_sv39x4/cva6_gtlb_sv39x4.sv
 
 // MMU Sv32
 ${CVA6_REPO_DIR}/core/mmu_sv32/cva6_mmu_sv32.sv

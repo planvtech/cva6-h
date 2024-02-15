@@ -91,6 +91,8 @@ def setup_parser_config_generator():
                       help="Number of instruction TLB entries")
   parser.add_argument("--DataTlbEntries", type=int, default=None,
                       help="Number of data TLB entries")
+  parser.add_argument("--GTlbEntries", type=int, default=None,
+                      help="Number of data GTLB entries")
   parser.add_argument("--RASDepth", type=int, default=None,
                       help="Depth of Return Address Stack")
   parser.add_argument("--BTBEntries", type=int, default=None,
@@ -154,6 +156,7 @@ MapArgsToParameter={
   "NrLoadBufEntries" : "CVA6ConfigNrLoadBufEntries",
   "InstrTlbEntries" : "CVA6ConfigInstrTlbEntries",
   "DataTlbEntries" : "CVA6ConfigDataTlbEntries",
+  "GTlbEntries" : "CVA6ConfigGTlbEntries",
   "RASDepth": "CVA6ConfigRASDepth",
   "BTBEntries": "CVA6ConfigBTBEntries",
   "BHTEntries": "CVA6ConfigBHTEntries",

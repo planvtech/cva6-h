@@ -171,6 +171,7 @@ module load_store_unit
         .CVA6Cfg          (CVA6Cfg),
         .INSTR_TLB_ENTRIES(ariane_pkg::INSTR_TLB_ENTRIES),
         .DATA_TLB_ENTRIES (ariane_pkg::DATA_TLB_ENTRIES),
+        .GTLB_ENTRIES     (ariane_pkg::GTLB_ENTRIES),
         .ASID_WIDTH       (ASID_WIDTH),
         .VMID_WIDTH       (VMID_WIDTH)
     ) i_cva6_mmu (

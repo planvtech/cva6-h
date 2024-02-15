@@ -88,6 +88,7 @@ module cva6_rvfi
     bit'(EnableAccelerator),
     CVA6Cfg.RVS,
     CVA6Cfg.RVU,
+    CVA6Cfg.GTlbPresent,
     CVA6Cfg.HaltAddress,
     CVA6Cfg.ExceptionAddress,
     CVA6Cfg.RASDepth,

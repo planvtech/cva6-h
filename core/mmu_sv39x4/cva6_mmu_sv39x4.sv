@@ -25,6 +25,7 @@ module cva6_mmu_sv39x4
     parameter config_pkg::cva6_cfg_t CVA6Cfg           = config_pkg::cva6_cfg_empty,
     parameter int unsigned           INSTR_TLB_ENTRIES = 4,
     parameter int unsigned           DATA_TLB_ENTRIES  = 4,
+    parameter int unsigned           GTLB_ENTRIES      = 4,
     parameter int unsigned           ASID_WIDTH        = 1,
     parameter int unsigned           VMID_WIDTH        = 1
 ) (
@@ -202,9 +203,19 @@ module cva6_mmu_sv39x4
       .lu_hit_o  (dtlb_lu_hit)
   );
 
+  logic flush_gtlb;
+  logic flush_vvma_gtlb;
+  logic [VMID_WIDTH-1:0]    gtlb_vmid_to_be_flushed;
+  logic [riscv::GPLEN-1:0]  gtlb_gpaddr_to_be_flushed;
+
+  assign flush_gtlb = CVA6Cfg.GTlbPresent ? flush_tlb_gvma_i : 1'b0;
+  assign flush_vvma_gtlb = CVA6Cfg.GTlbPresent ? flush_tlb_vvma_i : 1'b0;
+  assign gtlb_vmid_to_be_flushed = CVA6Cfg.GTlbPresent ? vmid_to_be_flushed_i : '0;
+  assign gtlb_gpaddr_to_be_flushed = CVA6Cfg.GTlbPresent ? gpaddr_to_be_flushed_i : '0;
 
   cva6_ptw_sv39x4 #(
       .CVA6Cfg   (CVA6Cfg),
+      .GTLB_ENTRIES (GTLB_ENTRIES),
       .ASID_WIDTH(ASID_WIDTH),
       .VMID_WIDTH(VMID_WIDTH)
   ) i_ptw (
@@ -237,6 +248,11 @@ module cva6_mmu_sv39x4
       .pmpcfg_i,
       .pmpaddr_i,
       .bad_gpaddr_o(ptw_bad_gpaddr),
+
+      .flush_gtlb_i           (flush_gtlb),
+      .flush_vvma_gtlb_i      (flush_vvma_gtlb),
+      .vmid_to_be_flushed_i   (gtlb_vmid_to_be_flushed),
+      .gpaddr_to_be_flushed_i (gtlb_gpaddr_to_be_flushed),
       .*
   );
 

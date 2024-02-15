@@ -23,6 +23,7 @@ package cva6_config_pkg;
   localparam CVA6ConfigZcbExtEn = 1;
   localparam CVA6ConfigAExtEn = 1;
   localparam CVA6ConfigHExtEn = 1;
+  localparam CVA6ConfigGTlbEn = 1;
   localparam CVA6ConfigBExtEn = 1;
   localparam CVA6ConfigVExtEn = 0;
   localparam CVA6ConfigZiCondExtEn = 1;
@@ -58,6 +59,7 @@ package cva6_config_pkg;
 
   localparam CVA6ConfigInstrTlbEntries = 16;
   localparam CVA6ConfigDataTlbEntries = 16;
+  localparam CVA6ConfigGTlbEntries = 16;
 
   localparam CVA6ConfigRASDepth = 2;
   localparam CVA6ConfigBTBEntries = 32;
@@ -113,6 +115,7 @@ package cva6_config_pkg;
       EnableAccelerator: bit'(0),
       RVS: bit'(1),
       RVU: bit'(1),
+      GTlbPresent: bit'(CVA6ConfigGTlbEn),
       HaltAddress: 64'h800,
       ExceptionAddress: 64'h808,
       RASDepth: unsigned'(CVA6ConfigRASDepth),

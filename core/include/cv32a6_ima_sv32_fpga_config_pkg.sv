@@ -58,6 +58,7 @@ package cva6_config_pkg;
 
   localparam CVA6ConfigInstrTlbEntries = 2;
   localparam CVA6ConfigDataTlbEntries = 2;
+  localparam CVA6ConfigGTlbEntries = 0;
 
   localparam CVA6ConfigRASDepth = 2;
   localparam CVA6ConfigBTBEntries = 32;
@@ -113,6 +114,7 @@ package cva6_config_pkg;
       EnableAccelerator: bit'(0),
       RVS: bit'(1),
       RVU: bit'(1),
+      GTlbPresent: bit'(0),
       HaltAddress: 64'h800,
       ExceptionAddress: 64'h808,
       RASDepth: unsigned'(CVA6ConfigRASDepth),

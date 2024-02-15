@@ -194,6 +194,7 @@ localparam config_pkg::cva6_cfg_t CVA6Cfg = '{
   EnableAccelerator:     bit'(0),
   RVS:                   bit'(1),
   RVU:                   bit'(1),
+  GTlbPresent:           bit'(CVA6ConfigGTlbEn),
   HaltAddress:           dm::HaltAddress,
   ExceptionAddress:      dm::ExceptionAddress,
   DmBaseAddress:         ariane_soc::DebugBase,
