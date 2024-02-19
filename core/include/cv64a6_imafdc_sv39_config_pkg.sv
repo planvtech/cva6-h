@@ -22,11 +22,11 @@ package cva6_config_pkg;
   localparam CVA6ConfigCExtEn = 1;
   localparam CVA6ConfigZcbExtEn = 1;
   localparam CVA6ConfigAExtEn = 1;
-  localparam CVA6ConfigHExtEn = 1;  // always disabled
-  localparam CVA6ConfigSstcExtEn = 0;
-  localparam CVA6ConfigGTlbEn = 0;
-  localparam CVA6ConfigL2Tlb4KEn = 0;
-  localparam CVA6ConfigL2Tlb2MEn = 0;
+  localparam CVA6ConfigHExtEn = 1;  // enable hypervisor extension
+  localparam CVA6ConfigSstcExtEn = 0; // enable sstc extension
+  localparam CVA6ConfigGTlbEn = 1;    // enable MMU Opt GTLB
+  localparam CVA6ConfigL2Tlb4KEn = 1; // enable MMU Opt L2 TLB 4k support
+  localparam CVA6ConfigL2Tlb2MEn = 1; // enable MMU Opt L2 TLB 2M support
   localparam CVA6ConfigL2TlbEn = CVA6ConfigL2Tlb4KEn || CVA6ConfigL2Tlb2MEn;
   localparam CVA6ConfigBExtEn = 1;
   localparam CVA6ConfigVExtEn = 0;
@@ -63,7 +63,9 @@ package cva6_config_pkg;
 
   localparam CVA6ConfigInstrTlbEntries = 16;
   localparam CVA6ConfigDataTlbEntries = 16;
+  // GTLB Configuration
   localparam CVA6ConfigGTlbEntries = 8;
+  // L2 TLB Configuration
   localparam CVA6ConfigL2Tlb4kEntries = 128;  // Set number of 4k entries
   localparam CVA6ConfigL2Tlb4kAssoc = 4;  // Set number of 4k associativity
   localparam CVA6ConfigL2Tlb2MEntries = 32;  // Set number of 2m entries
