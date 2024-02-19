@@ -31,7 +31,8 @@ module clint #(
     output axi_resp_t           axi_resp_o,
     input  logic                rtc_i,       // Real-time clock in (usually 32.768 kHz)
     output logic [NR_CORES-1:0] timer_irq_o, // Timer interrupts
-    output logic [NR_CORES-1:0] ipi_o        // software interrupt (a.k.a inter-process-interrupt)
+    output logic [NR_CORES-1:0] ipi_o,        // software interrupt (a.k.a inter-process-interrupt)
+    output logic [63:0]         timer_o      // expose timer to core
 );
     // register offset
     localparam logic [15:0] MSIP_BASE     = 16'h0;
@@ -85,6 +86,8 @@ module clint #(
     // Register Update Logic
     // -----------------------------
     // APB register write logic
+    // Set timer to mtime
+    assign timer_o = mtime_q;
     always_comb begin
         mtime_n    = mtime_q;
         mtimecmp_n = mtimecmp_q;

@@ -66,6 +66,7 @@ module csr_regfile
     output riscv::xs_t vs_o,  // Vector extension status
     // Decoder
     output irq_ctrl_t irq_ctrl_o,  // interrupt management to id stage
+    output logic vs_timer_irq_o, // vs timer interrupt line
     // MMU
     output logic en_translation_o,  // enable VA translation
     output logic en_g_translation_o,  // enable G-Stage translation
@@ -85,8 +86,9 @@ module csr_regfile
     output logic [riscv::PPNW-1:0] hgatp_ppn_o,
     output logic [VmidWidth-1:0] vmid_o,
     // external interrupts
-    input logic [1:0] irq_i,  // external interrupt in
-    input logic ipi_i,  // inter processor interrupt -> connected to machine mode sw
+    input logic [1:0] irq_i, // external interrupt in
+    input logic ipi_i, // inter processor interrupt -> connected to machine mode sw
+    input  logic [63:0] timer_i, // timer counter from CLINT
     input logic debug_req_i,  // debug request in
     output logic set_debug_pc_o,
     // Virtualization Support
@@ -161,26 +163,31 @@ module csr_regfile
   riscv::xlen_t mtval_q, mtval_d;
   riscv::xlen_t mtinst_q, mtinst_d;
   riscv::xlen_t mtval2_q, mtval2_d;
-  logic fiom_d, fiom_q;
+  riscv::envcfg_rv_t menvcfg_q, menvcfg_d;
 
   riscv::xlen_t stvec_q, stvec_d;
   riscv::xlen_t scounteren_q, scounteren_d;
+  riscv::xlen_t stimecmp_q,  stimecmp_d;
   riscv::xlen_t sscratch_q, sscratch_d;
   riscv::xlen_t sepc_q, sepc_d;
   riscv::xlen_t scause_q, scause_d;
   riscv::xlen_t stval_q, stval_d;
+  riscv::envcfg_rv_t senvcfg_q, senvcfg_d;
   riscv::xlen_t hedeleg_q, hedeleg_d;
   riscv::xlen_t hideleg_q, hideleg_d;
   riscv::xlen_t hcounteren_q, hcounteren_d;
   riscv::xlen_t hgeie_q, hgeie_d;
   riscv::xlen_t htval_q, htval_d;
   riscv::xlen_t htinst_q, htinst_d;
+  riscv::xlen_t htimedelta_q, htimedelta_d;
+  riscv::envcfg_rv_t henvcfg_q, henvcfg_d;
 
   riscv::xlen_t vstvec_q, vstvec_d;
   riscv::xlen_t vsscratch_q, vsscratch_d;
   riscv::xlen_t vsepc_q, vsepc_d;
   riscv::xlen_t vscause_q, vscause_d;
   riscv::xlen_t vstval_q, vstval_d;
+  riscv::xlen_t vstimecmp_q, vstimecmp_d;
 
   riscv::xlen_t dcache_q, dcache_d;
   riscv::xlen_t icache_q, icache_d;
@@ -234,7 +241,13 @@ module csr_regfile
   end else begin
     assign vsstatus_extended = '0;
   end
-
+  if (CVA6Cfg.RVSstc) begin
+    assign vs_timer_irq_o    = (menvcfg_q.stce && henvcfg_q.stce) ?
+                                    (timer_i >= $unsigned(($unsigned(vstimecmp_q) + $unsigned(htimedelta_q)))) :
+                                    1'b0;
+  end else begin
+    assign vs_timer_irq_o = 1'b0;
+  end
   always_comb begin : csr_read_process
     // a read access exception can only occur if we attempt to read a CSR which does not exist
     read_access_exception = 1'b0;
@@ -325,6 +338,19 @@ module csr_regfile
         end else begin
           read_access_exception = 1'b1;
         end
+        riscv::CSR_VSTIMECMP:begin
+          if (CVA6Cfg.RVSstc) begin
+            // intercept vstimecmp writes when MENVCFG.SCTE == 0 or MCOUNTEREN.TM == 0
+            if(priv_lvl_o == riscv::PRIV_LVL_S && (!menvcfg_q.stce || !mcounteren_q[1]))
+              read_access_exception = 1'b1;
+            else if(priv_lvl_o == riscv::PRIV_LVL_S && v_q && ((menvcfg_q.stce && !henvcfg_q.stce) || (mcounteren_q[1] && !hcounteren_q[1])))
+              virtual_read_access_exception = 1'b1;
+            else
+              csr_rdata = vstimecmp_q;
+          end else begin
+            read_access_exception = 1'b1;
+          end
+        end
         // supervisor registers
         riscv::CSR_SSTATUS: begin
           if (CVA6Cfg.RVS)
@@ -367,8 +393,19 @@ module csr_regfile
             read_access_exception = 1'b1;
           end
         end
+        riscv::CSR_STIMECMP: begin
+          if (CVA6Cfg.RVS && CVA6Cfg.RVSstc) begin
+            // intercept stimecmp/vstimecmp reads when MENVCFG.SCTE == 0 or MCOUNTEREN.TM == 0
+            if(priv_lvl_o == riscv::PRIV_LVL_S && (!menvcfg_q.stce || !mcounteren_q[1]))
+              read_access_exception = 1'b1;
+            else
+              csr_rdata = stimecmp_q;
+          end else begin
+            read_access_exception = 1'b1;
+          end
+        end
         riscv::CSR_SENVCFG:
-        if (CVA6Cfg.RVS) csr_rdata = '0 | fiom_q;
+        if (CVA6Cfg.RVS) csr_rdata = senvcfg_q;
         else read_access_exception = 1'b1;
         // hypervisor mode registers
         riscv::CSR_HSTATUS:
@@ -405,7 +442,7 @@ module csr_regfile
         if (CVA6Cfg.RVH) csr_rdata = '0;
         else read_access_exception = 1'b1;
         riscv::CSR_HENVCFG:
-        if (CVA6Cfg.RVH) csr_rdata = '0 | fiom_q;
+        if (CVA6Cfg.RVH) csr_rdata = henvcfg_q;
         else read_access_exception = 1'b1;
         riscv::CSR_HGATP: begin
           if (CVA6Cfg.RVH) begin
@@ -419,7 +456,9 @@ module csr_regfile
             read_access_exception = 1'b1;
           end
         end
-
+        riscv::CSR_HTIMEDELTA:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVSstc) csr_rdata = htimedelta_q;
+        else read_access_exception = 1'b1;
         // machine mode registers
         riscv::CSR_MSTATUS: csr_rdata = mstatus_extended;
         riscv::CSR_MSTATUSH:
@@ -446,7 +485,7 @@ module csr_regfile
         if (CVA6Cfg.RVH) csr_rdata = mtval2_q;
         else read_access_exception = 1'b1;
         riscv::CSR_MIP: csr_rdata = mip_q;
-        riscv::CSR_MENVCFG: csr_rdata = '0 | fiom_q;
+        riscv::CSR_MENVCFG: csr_rdata = menvcfg_q;
         riscv::CSR_MENVCFGH: begin
           if (riscv::XLEN == 32) csr_rdata = '0;
           else read_access_exception = 1'b1;
@@ -459,6 +498,9 @@ module csr_regfile
         riscv::CSR_MCOUNTINHIBIT:
         csr_rdata = {{(riscv::XLEN - (MHPMCounterNum + 3)) {1'b0}}, mcountinhibit_q};
         // Counters and Timers
+        riscv::CSR_TIME:
+        if (CVA6Cfg.RVSstc )csr_rdata = timer_i;
+        else read_access_exception = 1'b1;
         riscv::CSR_MCYCLE: csr_rdata = cycle_q[riscv::XLEN-1:0];
         riscv::CSR_MCYCLEH:
         if (riscv::XLEN == 32) csr_rdata = cycle_q[63:32];
@@ -764,7 +806,7 @@ module csr_regfile
     mtval_d                  = mtval_q;
     mtinst_d                 = mtinst_q;
     mtval2_d                 = mtval2_q;
-    fiom_d                   = fiom_q;
+    menvcfg_d                = menvcfg_q;
     dcache_d                 = dcache_q;
     icache_d                 = icache_q;
     acc_cons_d               = acc_cons_q;
@@ -776,6 +818,7 @@ module csr_regfile
     vscause_d                = vscause_q;
     vstval_d                 = vstval_q;
     vsatp_d                  = vsatp_q;
+    vstimecmp_d              = vstimecmp_q;
 
     sepc_d                   = sepc_q;
     scause_d                 = scause_q;
@@ -784,6 +827,8 @@ module csr_regfile
     sscratch_d               = sscratch_q;
     stval_d                  = stval_q;
     satp_d                   = satp_q;
+    stimecmp_d               = stimecmp_q;
+    senvcfg_d                = senvcfg_q;
     hedeleg_d                = hedeleg_q;
     hideleg_d                = hideleg_q;
     hgeie_d                  = hgeie_q;
@@ -791,6 +836,8 @@ module csr_regfile
     hcounteren_d             = hcounteren_q;
     htinst_d                 = htinst_q;
     htval_d                  = htval_q;
+    htimedelta_d             = htimedelta_q;
+    henvcfg_d                = henvcfg_q;
 
     en_ld_st_translation_d   = en_ld_st_translation_q;
     en_ld_st_g_translation_d = en_ld_st_g_translation_q;
@@ -939,6 +986,19 @@ module csr_regfile
             update_access_exception = 1'b1;
           end
         end
+        riscv::CSR_VSTIMECMP: begin
+          if (CVA6Cfg.RVH && CVA6Cfg.RVSstc) begin
+            // intercept vstimecmp writes when MENVCFG.SCTE == 0 or MCOUNTEREN.TM == 0
+            if(priv_lvl_o == riscv::PRIV_LVL_S && (!menvcfg_q.stce || !mcounteren_q[1]))
+              update_access_exception = 1'b1;
+            else if(priv_lvl_o == riscv::PRIV_LVL_S && v_q && ((menvcfg_q.stce && !henvcfg_q.stce) || (mcounteren_q[1] && !hcounteren_q[1])))
+              virtual_update_access_exception = 1'b1;
+            else
+              vstimecmp_d = csr_wdata;
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
         // sstatus is a subset of mstatus - mask it accordingly
         riscv::CSR_SSTATUS: begin
           if (CVA6Cfg.RVS) begin
@@ -1019,9 +1079,22 @@ module csr_regfile
             update_access_exception = 1'b1;
           end
         end
-        riscv::CSR_SENVCFG:
-        if (CVA6Cfg.RVU) fiom_d = csr_wdata[0];
-        else update_access_exception = 1'b1;
+        riscv::CSR_STIMECMP: begin
+          if (CVA6Cfg.RVS && CVA6Cfg.RVSstc) begin
+            // intercept stimecmp/vstimecmp writes when MENVCFG.SCTE == 0 or MCOUNTEREN.TM == 0
+            if(priv_lvl_o == riscv::PRIV_LVL_S && (!menvcfg_q.stce || !mcounteren_q[1]))
+                update_access_exception = 1'b1;
+            else begin
+                stimecmp_d = csr_wdata;
+            end
+          end else begin
+            update_access_exception = 1'b1;
+          end
+        end
+        riscv::CSR_SENVCFG: begin
+          mask = ariane_pkg::ENVCFG_WRITE_MASK[riscv::XLEN-1:0];
+          senvcfg_d = (senvcfg_q & ~mask) | (csr_wdata & mask);
+        end
         //hypervisor mode registers
         riscv::CSR_HSTATUS: begin
           if (CVA6Cfg.RVH) begin
@@ -1133,9 +1206,13 @@ module csr_regfile
             update_access_exception = 1'b1;
           end
         end
-        riscv::CSR_HENVCFG:
-        if (CVA6Cfg.RVH) fiom_d = csr_wdata[0];
-        else update_access_exception = 1'b1;
+        riscv::CSR_HENVCFG: begin
+          mask = ariane_pkg::ENVCFG_WRITE_MASK[riscv::XLEN-1:0];
+          henvcfg_d = (henvcfg_q & ~mask) | (csr_wdata & mask);
+          henvcfg_d.pbmte = menvcfg_q.pbmte ? henvcfg_d.pbmte : 1'b0;
+          // this instruction has side-effects
+          flush_o = 1'b1;
+        end
         riscv::CSR_MSTATUS: begin
           mstatus_d    = {{64 - riscv::XLEN{1'b0}}, csr_wdata};
           mstatus_d.xs = riscv::Off;
@@ -1153,6 +1230,9 @@ module csr_regfile
           // this register has side-effects on other registers, flush the pipeline
           flush_o         = 1'b1;
         end
+        riscv::CSR_HTIMEDELTA:
+        if (CVA6Cfg.RVH && CVA6Cfg.RVSstc) htimedelta_d = csr_wdata;
+        else update_access_exception = 1'b1;
         riscv::CSR_MSTATUSH: if (riscv::XLEN != 32) update_access_exception = 1'b1;
         // MISA is WARL (Write Any Value, Reads Legal Value)
         riscv::CSR_MISA: ;
@@ -1229,13 +1309,18 @@ module csr_regfile
         else update_access_exception = 1'b1;
         riscv::CSR_MIP: begin
           if (CVA6Cfg.RVH) begin
-            mask = riscv::MIP_SSIP | riscv::MIP_STIP | riscv::MIP_SEIP | riscv::MIP_VSSIP;
+            mask = riscv::MIP_SSIP | ((CVA6Cfg.RVSstc && menvcfg_q.stce) ? '0 : riscv::MIP_STIP)  | riscv::MIP_SEIP | riscv::MIP_VSSIP;
           end else begin
             mask = riscv::MIP_SSIP | riscv::MIP_STIP | riscv::MIP_SEIP;
           end
           mip_d = (mip_q & ~mask) | (csr_wdata & mask);
         end
-        riscv::CSR_MENVCFG: if (CVA6Cfg.RVS) fiom_d = csr_wdata[0];
+        riscv::CSR_MENVCFG: begin
+          mask = ariane_pkg::ENVCFG_WRITE_MASK[riscv::XLEN-1:0];
+          menvcfg_d = (menvcfg_q & ~mask) | (csr_wdata & mask);
+          // this instruction has side-effects
+          flush_o = 1'b1;
+        end
         riscv::CSR_MENVCFGH: begin
           if (riscv::XLEN != 32) update_access_exception = 1'b1;
         end
@@ -1467,6 +1552,10 @@ module csr_regfile
     mip_d[riscv::IRQ_M_SOFT] = ipi_i;
     // Timer interrupt pending, coming from platform timer
     mip_d[riscv::IRQ_M_TIMER] = time_irq_i;
+    // Supervisor timer interrupt
+    if(menvcfg_q.stce && CVA6Cfg.RVSstc) begin
+      mip_d[riscv::IRQ_S_TIMER] = (timer_i >= stimecmp_q);
+    end
 
     // -----------------------
     // Manage Exception Stack
@@ -2011,7 +2100,7 @@ module csr_regfile
     wfi_d = wfi_q;
     // if there is any (enabled) interrupt pending un-stall the core
     // also un-stall if we want to enter debug mode
-    if (|(mip_q & mie_q) || (CVA6Cfg.DebugEn && debug_req_i) || irq_i[1]) begin
+    if (|(mip_q & mie_q) || (CVA6Cfg.DebugEn && debug_req_i) || irq_i[1] || vs_timer_irq_o) begin
       wfi_d = 1'b0;
       // or alternatively if there is no exception pending and we are not in debug mode wait here
       // for the interrupt
@@ -2069,16 +2158,21 @@ module csr_regfile
     csr_rdata_o = csr_rdata;
 
     unique case (conv_csr_addr.address)
-      riscv::CSR_MIP:
-      csr_rdata_o = csr_rdata | ({{riscv::XLEN - 1{1'b0}}, irq_i[1]} << riscv::IRQ_S_EXT);
+      riscv::CSR_MIP: csr_rdata_o = csr_rdata | (irq_i[1] << riscv::IRQ_S_EXT) | (vs_timer_irq_o << riscv::IRQ_VS_TIMER);
       // in supervisor mode we also need to check whether we delegated this bit
       riscv::CSR_SIP: begin
         if (CVA6Cfg.RVS) begin
-          csr_rdata_o = csr_rdata
-                              | ({{riscv::XLEN-1{1'b0}}, (irq_i[1] & mideleg_q[riscv::IRQ_S_EXT])} << riscv::IRQ_S_EXT);
+          csr_rdata_o = csr_rdata | ((irq_i[1] & mideleg_q[riscv::IRQ_S_EXT]) << riscv::IRQ_S_EXT);
         end
       end
-      default: ;
+      riscv::CSR_VSIP: begin
+          csr_rdata_o = csr_rdata | ((vs_timer_irq_o & VS_DELEG_INTERRUPTS[riscv::IRQ_VS_TIMER] &
+                                             hideleg_q[riscv::IRQ_VS_TIMER]) << riscv::IRQ_S_TIMER);
+      end
+      riscv::CSR_HIP: begin
+          csr_rdata_o = csr_rdata | ((vs_timer_irq_o & HS_DELEG_INTERRUPTS[riscv::IRQ_VS_TIMER]) << riscv::IRQ_VS_TIMER);
+      end
+      default:;
     endcase
   end
 
@@ -2165,7 +2259,6 @@ module csr_regfile
       mcounteren_q     <= {riscv::XLEN{1'b0}};
       mscratch_q       <= {riscv::XLEN{1'b0}};
       mtval_q          <= {riscv::XLEN{1'b0}};
-      fiom_q           <= '0;
       dcache_q         <= {{riscv::XLEN - 1{1'b0}}, 1'b1};
       icache_q         <= {{riscv::XLEN - 1{1'b0}}, 1'b1};
       mcountinhibit_q  <= '0;
@@ -2174,6 +2267,7 @@ module csr_regfile
       if (CVA6Cfg.RVS) begin
         medeleg_q    <= {riscv::XLEN{1'b0}};
         mideleg_q    <= {riscv::XLEN{1'b0}};
+        menvcfg_q    <= {riscv::XLEN{1'b0}};
         sepc_q       <= {riscv::XLEN{1'b0}};
         scause_q     <= {riscv::XLEN{1'b0}};
         stvec_q      <= {riscv::XLEN{1'b0}};
@@ -2181,6 +2275,10 @@ module csr_regfile
         sscratch_q   <= {riscv::XLEN{1'b0}};
         stval_q      <= {riscv::XLEN{1'b0}};
         satp_q       <= {riscv::XLEN{1'b0}};
+        senvcfg_q    <= {riscv::XLEN{1'b0}};
+        if (CVA6Cfg.RVSstc) begin
+          stimecmp_q <= {riscv::XLEN{1'b0}};
+        end
       end
 
       if (CVA6Cfg.RVH) begin
@@ -2195,6 +2293,7 @@ module csr_regfile
         hcounteren_q             <= {riscv::XLEN{1'b0}};
         htval_q                  <= {riscv::XLEN{1'b0}};
         htinst_q                 <= {riscv::XLEN{1'b0}};
+        henvcfg_q                <= {riscv::XLEN{1'b0}};
         // virtual supervisor mode registers
         vsstatus_q               <= 64'b0;
         vsepc_q                  <= {riscv::XLEN{1'b0}};
@@ -2204,6 +2303,10 @@ module csr_regfile
         vstval_q                 <= {riscv::XLEN{1'b0}};
         vsatp_q                  <= {riscv::XLEN{1'b0}};
         en_ld_st_g_translation_q <= 1'b0;
+        if (CVA6Cfg.RVSstc) begin
+          htimedelta_q <= {riscv::XLEN{1'b0}};
+          vstimecmp_q <= {riscv::XLEN{1'b0}};
+        end
       end
       // timer and counters
       cycle_q                <= 64'b0;
@@ -2245,7 +2348,6 @@ module csr_regfile
       mcounteren_q     <= mcounteren_d;
       mscratch_q       <= mscratch_d;
       if (CVA6Cfg.TvalEn) mtval_q <= mtval_d;
-      fiom_q           <= fiom_d;
       dcache_q         <= dcache_d;
       icache_q         <= icache_d;
       mcountinhibit_q  <= mcountinhibit_d;
@@ -2254,13 +2356,16 @@ module csr_regfile
       if (CVA6Cfg.RVS) begin
         medeleg_q    <= medeleg_d;
         mideleg_q    <= mideleg_d;
+        menvcfg_q    <= menvcfg_d;
         sepc_q       <= sepc_d;
         scause_q     <= scause_d;
         stvec_q      <= stvec_d;
+        senvcfg_q    <= senvcfg_d;
         scounteren_q <= scounteren_d;
         sscratch_q   <= sscratch_d;
         if (CVA6Cfg.TvalEn) stval_q <= stval_d;
         satp_q <= satp_d;
+        if (CVA6Cfg.RVSstc) stimecmp_q <= stimecmp_d;
       end
       if (CVA6Cfg.RVH) begin
         v_q                      <= v_d;
@@ -2283,7 +2388,12 @@ module csr_regfile
         vsscratch_q              <= vsscratch_d;
         vstval_q                 <= vstval_d;
         vsatp_q                  <= vsatp_d;
+        henvcfg_q                <= henvcfg_d;
         en_ld_st_g_translation_q <= en_ld_st_g_translation_d;
+        if (CVA6Cfg.RVSstc) begin
+          htimedelta_q <= htimedelta_d;
+          vstimecmp_q <= vstimecmp_d;
+        end
       end
       // timer and counters
       cycle_q                  <= cycle_d;

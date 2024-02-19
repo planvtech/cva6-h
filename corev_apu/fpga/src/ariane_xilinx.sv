@@ -176,6 +176,7 @@ module ariane_xilinx (
       RVV: bit'(cva6_config_pkg::CVA6ConfigVExtEn),
       RVC: bit'(cva6_config_pkg::CVA6ConfigCExtEn),
       RVH: bit'(cva6_config_pkg::CVA6ConfigHExtEn),
+      RVSstc: bit'(cva6_config_pkg::CVA6ConfigSstcExtEn),
       RVZCB: bit'(cva6_config_pkg::CVA6ConfigZcbExtEn),
       XFVec: bit'(cva6_config_pkg::CVA6ConfigFVecEn),
       CvxifEn: bit'(cva6_config_pkg::CVA6ConfigCvxifEn),
@@ -280,6 +281,7 @@ module ariane_xilinx (
   logic debug_req_irq;
   logic timer_irq;
   logic ipi;
+  logic [63:0] timer;
 
   logic clk;
   logic eth_clk;
@@ -829,6 +831,7 @@ module ariane_xilinx (
       .hart_id_i    ('0),
       .irq_i        (irq),
       .ipi_i        (ipi),
+      .timer_i      (timer),
       .time_irq_i   (timer_irq),
       .rvfi_probes_o(  /* open */),
       .debug_req_i  (debug_req_irq),
@@ -869,7 +872,8 @@ module ariane_xilinx (
       .axi_resp_o (axi_clint_resp),
       .rtc_i      (rtc),
       .timer_irq_o(timer_irq),
-      .ipi_o      (ipi)
+      .ipi_o      (ipi),
+      .timer_o    (timer)
   );
 
   `AXI_ASSIGN_TO_REQ(axi_clint_req, master[ariane_soc::CLINT])

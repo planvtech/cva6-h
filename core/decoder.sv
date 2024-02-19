@@ -34,6 +34,7 @@ module decoder
     input exception_t ex_i,  // if an exception occured in if
     input logic [1:0] irq_i,  // external interrupt
     input irq_ctrl_t irq_ctrl_i,  // interrupt control and status information from CSRs
+    input logic vs_timer_irq_i,  // VS-mode timer interrupt
     // From CSR
     input riscv::priv_lvl_t priv_lvl_i,  // current privilege level
     input logic v_i,  // current virtualization mode
@@ -1507,7 +1508,7 @@ module decoder
       // for two privilege levels: Supervisor and Machine Mode
       // Virtual Supervisor Timer Interrupt
       if (CVA6Cfg.RVH) begin
-        if (irq_ctrl_i.mie[riscv::IRQ_VS_TIMER] && irq_ctrl_i.mip[riscv::IRQ_VS_TIMER]) begin
+        if (irq_ctrl_i.mie[riscv::IRQ_VS_TIMER] && (irq_ctrl_i.mip[riscv::IRQ_VS_TIMER] | vs_timer_irq_i)) begin
           interrupt_cause = riscv::VS_TIMER_INTERRUPT;
         end
         // Virtual Supervisor Software Interrupt

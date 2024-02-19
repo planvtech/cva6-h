@@ -23,9 +23,10 @@ package cva6_config_pkg;
   localparam CVA6ConfigZcbExtEn = 1;
   localparam CVA6ConfigAExtEn = 1;
   localparam CVA6ConfigHExtEn = 1;  // always disabled
-  localparam CVA6ConfigGTlbEn = 1;
-  localparam CVA6ConfigL2Tlb4KEn = 1;
-  localparam CVA6ConfigL2Tlb2MEn = 1;
+  localparam CVA6ConfigSstcExtEn = 0;
+  localparam CVA6ConfigGTlbEn = 0;
+  localparam CVA6ConfigL2Tlb4KEn = 0;
+  localparam CVA6ConfigL2Tlb2MEn = 0;
   localparam CVA6ConfigL2TlbEn = CVA6ConfigL2Tlb4KEn || CVA6ConfigL2Tlb2MEn;
   localparam CVA6ConfigBExtEn = 1;
   localparam CVA6ConfigVExtEn = 0;
@@ -100,6 +101,7 @@ package cva6_config_pkg;
       RVV: bit'(CVA6ConfigVExtEn),
       RVC: bit'(CVA6ConfigCExtEn),
       RVH: bit'(CVA6ConfigHExtEn),
+      RVSstc: bit'(CVA6ConfigSstcExtEn),
       RVZCB: bit'(CVA6ConfigZcbExtEn),
       XFVec: bit'(CVA6ConfigFVecEn),
       CvxifEn: bit'(CVA6ConfigCvxifEn),

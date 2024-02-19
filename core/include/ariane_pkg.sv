@@ -159,6 +159,8 @@ package ariane_pkg;
   localparam logic [riscv::XLEN-1:0] VS_DELEG_INTERRUPTS = riscv::MIP_VSSIP
                                                     | riscv::MIP_VSTIP
                                                     | riscv::MIP_VSEIP;
+  localparam logic [63:0] ENVCFG_WRITE_MASK = riscv::MENVCFG_FIOM
+                                              | cva6_config_pkg::CVA6ConfigSstcExtEn ? riscv::MENVCFG_STCE : 0;
 
   // ---------------
   // AXI

@@ -41,6 +41,7 @@ module id_stage #(
     input riscv::xs_t vs_i,  // vector extension status
     input logic [1:0] irq_i,
     input ariane_pkg::irq_ctrl_t irq_ctrl_i,
+    input logic vs_timer_irq_i,
     input logic debug_mode_i,  // we are in debug mode
     input logic tvm_i,
     input logic tw_i,
@@ -92,6 +93,7 @@ module id_stage #(
   ) decoder_i (
       .debug_req_i,
       .irq_ctrl_i,
+      .vs_timer_irq_i,
       .irq_i,
       .pc_i                   (fetch_entry_i.address),
       .is_compressed_i        (is_compressed),
