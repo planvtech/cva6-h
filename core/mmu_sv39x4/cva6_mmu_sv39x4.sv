@@ -25,7 +25,7 @@ module cva6_mmu_sv39x4
     parameter config_pkg::cva6_cfg_t CVA6Cfg           = config_pkg::cva6_cfg_empty,
     parameter int unsigned           INSTR_TLB_ENTRIES = 4,
     parameter int unsigned           DATA_TLB_ENTRIES  = 4,
-    parameter int unsigned           GTLB_ENTRIES      = 4,
+    parameter int unsigned           GTLB_ENTRIES      = 8,
     parameter int unsigned           L2_TLB_4K_ENTRIES = 128,
     parameter int unsigned           L2_TLB_4K_ASSOC   = 4,
     parameter int unsigned           L2_TLB_2M_ENTRIES = 32,
@@ -139,7 +139,7 @@ module cva6_mmu_sv39x4
   l2_tlb_resp_t                    l2_tlb_resp;  // L2 TLB response to PTW request
   // From PTW
   l2_tlb_req_t                     l2_tlb_req;  // PTW request to L2 TLB request
-  tlb_update_t                     l2_tlb_update;  // PTW update L2 TLB
+  l2_tlb_update_sv39x4_t           l2_tlb_update;  // PTW update L2 TLB
 
 
   // Assignments

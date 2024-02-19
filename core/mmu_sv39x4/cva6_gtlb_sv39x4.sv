@@ -8,7 +8,7 @@ module cva6_gtlb_sv39x4
   import ariane_pkg::*;
 #(
     parameter config_pkg::cva6_cfg_t CVA6Cfg = config_pkg::cva6_cfg_empty,
-    parameter int unsigned GTLB_ENTRIES = 4,
+    parameter int unsigned GTLB_ENTRIES = 8,
     parameter int unsigned VMID_WIDTH = 1
 ) (
     input  logic                    clk_i,         // Clock

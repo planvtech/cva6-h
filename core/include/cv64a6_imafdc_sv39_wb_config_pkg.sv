@@ -58,7 +58,7 @@ package cva6_config_pkg;
 
   localparam CVA6ConfigInstrTlbEntries = 16;
   localparam CVA6ConfigDataTlbEntries = 16;
-  localparam CVA6ConfigGTlbEntries = 0;
+  localparam CVA6ConfigGTlbEntries = 8;
   localparam CVA6ConfigL2Tlb4kEntries = 128;  // Set number of 4k entries
   localparam CVA6ConfigL2Tlb4kAssoc = 4;  // Set number of 4k associativity
   localparam CVA6ConfigL2Tlb2MEntries = 32;  // Set number of 2m entries
