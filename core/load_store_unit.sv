@@ -275,6 +275,13 @@ module load_store_unit
   end else if (MMU_PRESENT && (riscv::XLEN == 64)) begin : gen_mmu_sv39
     mmu #(
         .CVA6Cfg          (CVA6Cfg),
+        .exception_t      (exception_t),
+        .icache_areq_t    (icache_areq_t),
+        .icache_arsp_t    (icache_arsp_t),
+        .icache_dreq_t    (icache_dreq_t),
+        .icache_drsp_t    (icache_drsp_t),
+        .dcache_req_i_t   (dcache_req_i_t),
+        .dcache_req_o_t   (dcache_req_o_t),
         .INSTR_TLB_ENTRIES(ariane_pkg::INSTR_TLB_ENTRIES),
         .DATA_TLB_ENTRIES (ariane_pkg::DATA_TLB_ENTRIES),
         .ASID_WIDTH       (ASID_WIDTH)

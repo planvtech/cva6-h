@@ -148,7 +148,6 @@ module csr_regfile
     output logic debug_mode_o,
     // we are in single-step mode - COMMIT_STAGE
     output logic single_step_o,
-    output logic hu_o,  // hypervisor user mode
     // L1 ICache Enable - CACHE
     output logic icache_en_o,
     // L1 DCache Enable - CACHE
@@ -250,6 +249,7 @@ module csr_regfile
   logic [riscv::XLEN-1:0] hcounteren_q, hcounteren_d;
   logic [riscv::XLEN-1:0] hgeie_q, hgeie_d;
   logic [riscv::XLEN-1:0] htinst_q, htinst_d;
+  logic [riscv::XLEN-1:0] htval_q, htval_d;
 
   logic [riscv::XLEN-1:0] vstvec_q, vstvec_d;
   logic [riscv::XLEN-1:0] vsscratch_q, vsscratch_d;
@@ -1009,7 +1009,7 @@ module csr_regfile
             if (priv_lvl_o == riscv::PRIV_LVL_S && hstatus_q.vtvm && v_q) begin
               virtual_update_access_exception = 1'b1;
             end else begin
-              vsatp      = riscv::satp_t'(csr_wdata);
+              vsatp      = satp_t'(csr_wdata);
               // only make ASID_LEN - 1 bit stick, that way software can figure out how many ASID bits are supported
               vsatp.asid = vsatp.asid & {{(riscv::ASIDW - AsidWidth) {1'b0}}, {AsidWidth{1'b1}}};
               // only update if we actually support this mode
@@ -1201,7 +1201,7 @@ module csr_regfile
             if (priv_lvl_o == riscv::PRIV_LVL_S && !v_q && mstatus_q.tvm)
               update_access_exception = 1'b1;
             else begin
-              hgatp      = riscv::hgatp_t'(csr_wdata);
+              hgatp      = hgatp_t'(csr_wdata);
               //hardwire PPN[1:0] to zero
               hgatp[1:0] = 2'b0;
               // only make VMID_LEN - 1 bit stick, that way software can figure out how many VMID bits are supported

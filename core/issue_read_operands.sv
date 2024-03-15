@@ -141,7 +141,7 @@ module issue_read_operands
   logic [TRANS_ID_BITS-1:0] trans_id_n, trans_id_q;
   fu_op operator_n, operator_q;  // operation to perform
   fu_t fu_n, fu_q;  // functional unit to use
-  riscv::xlen_t tinst_n, tinst_q;  // transformed instruction
+  logic [riscv::XLEN-1:0] tinst_n, tinst_q;  // transformed instruction
 
   // forwarding signals
   logic forward_rs1, forward_rs2, forward_rs3;

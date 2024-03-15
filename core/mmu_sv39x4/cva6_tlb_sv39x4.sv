@@ -21,6 +21,7 @@ module cva6_tlb_sv39x4
   import ariane_pkg::*;
 #(
     parameter config_pkg::cva6_cfg_t CVA6Cfg = config_pkg::cva6_cfg_empty,
+    parameter type tlb_update_t = logic,
     parameter int unsigned TLB_ENTRIES = 4,
     parameter int unsigned ASID_WIDTH = 1,
     parameter int unsigned VMID_WIDTH = 1
@@ -34,7 +35,7 @@ module cva6_tlb_sv39x4
     input logic g_st_enbl_i,  // g-stage enabled
     input logic v_i,  // virtualization mode
     // Update TLB
-    input tlb_update_sv39x4_t update_i,
+    input tlb_update_t update_i,
     // Lookup signals
     input logic lu_access_i,
     input logic [ASID_WIDTH-1:0] lu_asid_i,

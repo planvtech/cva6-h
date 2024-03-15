@@ -350,7 +350,7 @@ module cva6
   fu_data_t fu_data_id_ex;
   logic [riscv::VLEN-1:0] pc_id_ex;
   logic is_compressed_instr_id_ex;
-  riscv::xlen_t tinst_ex;
+  logic [riscv::XLEN-1:0] tinst_ex;
   // fixed latency units
   logic flu_ready_ex_id;
   logic [TRANS_ID_BITS-1:0] flu_trans_id_ex_id;

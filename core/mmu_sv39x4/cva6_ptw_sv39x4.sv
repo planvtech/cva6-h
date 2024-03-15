@@ -23,6 +23,9 @@ module cva6_ptw_sv39x4
   import ariane_pkg::*;
 #(
     parameter config_pkg::cva6_cfg_t CVA6Cfg = config_pkg::cva6_cfg_empty,
+    parameter type dcache_req_i_t = logic,
+    parameter type dcache_req_o_t = logic,
+    parameter type tlb_update_t = logic,
     parameter int ASID_WIDTH = 1,
     parameter int VMID_WIDTH = 1
 ) (
@@ -52,8 +55,8 @@ module cva6_ptw_sv39x4
 
 
     // to TLBs, update logic
-    output tlb_update_sv39x4_t itlb_update_o,
-    output tlb_update_sv39x4_t dtlb_update_o,
+    output tlb_update_t itlb_update_o,
+    output tlb_update_t dtlb_update_o,
 
     output logic [riscv::VLEN-1:0] update_vaddr_o,
 
@@ -589,7 +592,8 @@ module cva6_ptw_sv39x4
       // 1. in the PTE Lookup check whether we still need to wait for an rvalid
       // 2. waiting for a grant, if so: wait for it
       // if not, go back to idle
-      if ((state_q == PTE_LOOKUP && !data_rvalid_q) || ((state_q == WAIT_GRANT) && req_port_i.data_gnt))
+      if (((state_q inside {PTE_LOOKUP, WAIT_RVALID}) && !data_rvalid_q) ||
+                ((state_q == WAIT_GRANT) && req_port_i.data_gnt))
         state_d = WAIT_RVALID;
       else state_d = IDLE;
     end

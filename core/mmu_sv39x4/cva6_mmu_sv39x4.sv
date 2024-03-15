@@ -23,6 +23,13 @@ module cva6_mmu_sv39x4
   import ariane_pkg::*;
 #(
     parameter config_pkg::cva6_cfg_t CVA6Cfg           = config_pkg::cva6_cfg_empty,
+    parameter type                   icache_areq_t     = logic,
+    parameter type                   icache_arsp_t     = logic,
+    parameter type                   icache_dreq_t     = logic,
+    parameter type                   icache_drsp_t     = logic,
+    parameter type                   dcache_req_i_t    = logic,
+    parameter type                   dcache_req_o_t    = logic,
+    parameter type                   exception_t       = logic,
     parameter int unsigned           INSTR_TLB_ENTRIES = 4,
     parameter int unsigned           DATA_TLB_ENTRIES  = 4,
     parameter int unsigned           ASID_WIDTH        = 1,
@@ -44,7 +51,7 @@ module cva6_mmu_sv39x4
     input exception_t misaligned_ex_i,
     input logic lsu_req_i,  // request address translation
     input logic [riscv::VLEN-1:0] lsu_vaddr_i,  // virtual address in
-    input riscv::xlen_t lsu_tinst_i,  // transformed instruction in
+    input logic [riscv::XLEN-1:0] lsu_tinst_i,  // transformed instruction in
     input logic lsu_is_store_i,  // the translation is requested by a store
     output logic csr_hs_ld_st_inst_o,  // hyp load store instruction
     // if we need to walk the page table we can't grant in the same cycle
@@ -90,7 +97,7 @@ module cva6_mmu_sv39x4
     input riscv::pmpcfg_t [15:0] pmpcfg_i,
     input logic [15:0][riscv::PLEN-3:0] pmpaddr_i
 );
-  localparam type tlb_update_sv39x4_t = struct packed {
+  localparam type tlb_update_t = struct packed {
     logic                  valid;      // valid flag
     logic                  is_s_2M;
     logic                  is_s_1G;
@@ -116,7 +123,7 @@ module cva6_mmu_sv39x4
   logic [riscv::GPLEN-1:0] ptw_bad_gpaddr;  // PTW guest page fault bad guest physical addr
 
   logic [riscv::VLEN-1:0] update_vaddr;
-  tlb_update_sv39x4_t update_ptw_itlb, update_ptw_dtlb;
+  tlb_update_t update_ptw_itlb, update_ptw_dtlb;
 
   logic                           itlb_lu_access;
   riscv::pte_t                    itlb_content;
@@ -148,6 +155,7 @@ module cva6_mmu_sv39x4
 
   cva6_tlb_sv39x4 #(
       .CVA6Cfg    (CVA6Cfg),
+      .tlb_update_t(tlb_update_t),
       .TLB_ENTRIES(INSTR_TLB_ENTRIES),
       .ASID_WIDTH (ASID_WIDTH),
       .VMID_WIDTH (VMID_WIDTH)
@@ -182,6 +190,7 @@ module cva6_mmu_sv39x4
 
   cva6_tlb_sv39x4 #(
       .CVA6Cfg    (CVA6Cfg),
+      .tlb_update_t(tlb_update_t),
       .TLB_ENTRIES(DATA_TLB_ENTRIES),
       .ASID_WIDTH (ASID_WIDTH),
       .VMID_WIDTH (VMID_WIDTH)
@@ -217,6 +226,9 @@ module cva6_mmu_sv39x4
 
   cva6_ptw_sv39x4 #(
       .CVA6Cfg   (CVA6Cfg),
+      .dcache_req_i_t(dcache_req_i_t),
+      .dcache_req_o_t(dcache_req_o_t),
+      .tlb_update_t(tlb_update_t),
       .ASID_WIDTH(ASID_WIDTH),
       .VMID_WIDTH(VMID_WIDTH)
   ) i_ptw (
